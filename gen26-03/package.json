@@ -1,0 +1,17 @@
+{
+  "name": "gen26-03",
+  "version": "1.0.0",
+  "description": "",
+  "main": "gen23-03-1.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "canvas-sketch": "^0.7.7",
+    "canvas-sketch-util": "^1.10.0",
+    "hersheytext": "^2.0.0"
+  }
+}
