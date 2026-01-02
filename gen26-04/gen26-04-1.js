@@ -6,7 +6,7 @@ const { clipPolylinesToBox } = require('canvas-sketch-util/geometry');
 const sanzo = require('sanzo-color');
 const { bundleRawGroups, placeRaw, makeUnitConverters, renderGroupedSVG } = require('./penplot-utils');
 const hershey = require('hersheytext');
-
+const load = require('load-asset');
 
 
 // You can force a specific seed by replacing this with a string value
@@ -28,15 +28,19 @@ const settings = {
 
 
 const params = {
-  rows: 20,
+  rows: 100,
   margin: 10
 }
 
 
 
-const sketch = ({ context, width, height, units, exporting }) => {
+
+const sketch = async ({ context, width, height, units, exporting, update }) => {
   // Initialize all path arrays
   const framePaths = [];
+
+
+
 
   // POSITIONING
   const margin = 0;
@@ -48,10 +52,38 @@ const sketch = ({ context, width, height, units, exporting }) => {
   const cellWidth = drawWidth / cols;
   const origin = { x: params.margin, y: params.margin };
 
-
   // Actual code
   const grid = new Grid(rows, cols, cellWidth, cellHeight, origin)
-  grid.drawFrames(framePaths);
+
+  // OTHER CANVAS
+  const typeCanvas = document.createElement('canvas');
+  typeCanvas.width = cols;
+  typeCanvas.height = rows;
+  const typeContext = typeCanvas.getContext('2d');
+  typeContext.clearRect(0, 0, cols, rows);
+  const image = await load('./inspiration/jongens.jpeg');
+  const r = fitRect(image.width, image.height, cols, rows, 'contain');
+  typeContext.drawImage(image, r.x, r.y, r.w, r.h);
+  const typeData = typeContext.getImageData(0, 0, cols, rows).data;
+  let count = 0;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const cell = grid.cells[count];
+      const x = col * cell;
+      const y = row * cell;
+      const r = typeData[4 * count];
+
+      const isDot = checkVal(r);
+      if (isDot) {
+        const radius = r / 200;
+        cell.drawDot(framePaths, radius);
+      }
+      count++;
+    }
+  }
+
+
+
 
 
   // EXPORT + RENDERING
@@ -131,7 +163,7 @@ class Grid {
   }
 
   drawFrames(paths) {
-    this.cells.forEach(cell =>{
+    this.cells.forEach(cell => {
       cell.drawFrame(paths);
     })
   }
@@ -156,4 +188,26 @@ class Cell {
     p.closePath();
     paths.push(p);
   }
+
+  drawDot(paths, radius) {
+    const p = createPath();
+    p.arc(this.origin.x + this.col * this.cellWidth + this.cellWidth / 2, this.origin.y + this.row * this.cellHeight + this.cellHeight / 2, radius, 0, 2 * Math.PI)
+    paths.push(p);
+  }
+}
+
+const checkVal = (v) => {
+  return v > 1 ? true : false;
+}
+
+function fitRect(srcW, srcH, dstW, dstH, mode = 'contain') {
+  const s = mode === 'cover'
+    ? Math.max(dstW / srcW, dstH / srcH)
+    : Math.min(dstW / srcW, dstH / srcH);
+
+  const w = srcW * s;
+  const h = srcH * s;
+  const x = (dstW - w) / 2;
+  const y = (dstH - h) / 2;
+  return { x, y, w, h };
 }

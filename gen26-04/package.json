@@ -13,6 +13,7 @@
     "canvas-sketch": "^0.7.7",
     "canvas-sketch-util": "^1.10.0",
     "hersheytext": "^2.0.0",
+    "load-asset": "^1.2.0",
     "sanzo-color": "^1.0.0"
   }
 }
