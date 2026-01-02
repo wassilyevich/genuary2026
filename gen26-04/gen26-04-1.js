@@ -27,14 +27,32 @@ const settings = {
 };
 
 
-
+const params = {
+  rows: 20,
+  margin: 10
+}
 
 
 
 const sketch = ({ context, width, height, units, exporting }) => {
-  // Holds all our 'path' objects
-  const paths = [];
-  
+  // Initialize all path arrays
+  const framePaths = [];
+
+  // POSITIONING
+  const margin = 0;
+  const drawWidth = width - 2 * params.margin;
+  const drawHeight = height - 2 * params.margin;
+  const rows = params.rows;
+  const cellHeight = drawHeight / rows;
+  const cols = Math.floor(drawWidth / cellHeight);
+  const cellWidth = drawWidth / cols;
+  const origin = { x: params.margin, y: params.margin };
+
+
+  // Actual code
+  const grid = new Grid(rows, cols, cellWidth, cellHeight, origin)
+  grid.drawFrames(framePaths);
+
 
   // EXPORT + RENDERING
   return ({ context, width, height, units, exporting }) => {
@@ -42,7 +60,7 @@ const sketch = ({ context, width, height, units, exporting }) => {
 
 
     // Convert the paths into polylines and clip to bounds
-    let lines = pathsToPolylines(paths, { units: settings.units });
+    let lines = pathsToPolylines(framePaths, { units: settings.units });
 
     // Clip to bounds, using a margin in working units
     const box = [margin, margin, width - margin, height - margin];
@@ -91,12 +109,51 @@ canvasSketch(sketch, settings);
 
 
 
-class Grid{
-  constructor(rows, cols, cellWidth, cellHeight, origin){
+class Grid {
+  constructor(rows, cols, cellWidth, cellHeight, origin) {
     this.rows = rows;
     this.cols = cols;
     this.cellWidth = cellWidth;
     this.cellHeight = cellHeight;
     this.origin = origin;
+    this.cells = [];
+    this.initialize();
+  }
+
+  initialize() {
+    let count = 0;
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.cols; col++) {
+        this.cells.push(new Cell(row, col, this.cellWidth, this.cellHeight, this.origin, count));
+        count++;
+      }
+    }
+  }
+
+  drawFrames(paths) {
+    this.cells.forEach(cell =>{
+      cell.drawFrame(paths);
+    })
+  }
+}
+
+class Cell {
+  constructor(row, col, cellWidth, cellHeight, origin, id) {
+    this.row = row;
+    this.col = col;
+    this.cellWidth = cellWidth;
+    this.cellHeight = cellHeight;
+    this.origin = origin;
+    this.id = id;
+  }
+
+  drawFrame(paths) {
+    const p = createPath();
+    p.moveTo(this.origin.x + this.col * this.cellWidth, this.origin.y + this.row * this.cellHeight);
+    p.lineTo(this.origin.x + this.col * this.cellWidth + this.cellWidth, this.origin.y + this.row * this.cellHeight);
+    p.lineTo(this.origin.x + this.col * this.cellWidth + this.cellWidth, this.origin.y + this.row * this.cellHeight + this.cellHeight);
+    p.lineTo(this.origin.x + this.col * this.cellWidth, this.origin.y + this.row * this.cellHeight + this.cellHeight);
+    p.closePath();
+    paths.push(p);
   }
 }
