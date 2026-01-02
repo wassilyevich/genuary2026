@@ -28,9 +28,12 @@ const settings = {
 
 
 const params = {
-  rows: 100,
+  rows: 250,
   margin: 10,
-  limitValue: 50
+  limitValue: 0.2,
+  shadeLevels: 0.4,
+  penWidth: 0.2,
+  textScale: 0.035
 }
 
 
@@ -38,7 +41,8 @@ const params = {
 
 const sketch = async ({ context, width, height, units, exporting, update }) => {
   // Initialize all path arrays
-  const framePaths = [];
+  const plinoPaths = [];
+  const vasilPaths = [];
 
 
 
@@ -62,7 +66,7 @@ const sketch = async ({ context, width, height, units, exporting, update }) => {
   vasilCanvas.height = rows;
   const vasilContext = vasilCanvas.getContext('2d');
   vasilContext.clearRect(0, 0, cols, rows);
-  const vasil = await load('./inspiration/vasil-bw.jpg');
+  const vasil = await load('./inspiration/pliendaan-2.jpg');
   const vr = fitRect(vasil.width, vasil.height, cols, rows, 'contain');
   vasilContext.drawImage(vasil, vr.x, vr.y, vr.w, vr.h);
   const vasilData = vasilContext.getImageData(0, 0, cols, rows).data;
@@ -76,23 +80,17 @@ const sketch = async ({ context, width, height, units, exporting, update }) => {
   const pr = fitRect(plino.width, plino.height, cols, rows, 'contain');
   plinoContext.drawImage(plino, pr.x, pr.y, pr.w, pr.h);
   const plinoData = plinoContext.getImageData(0, 0, cols, rows).data;
+
+  const shading = generateShading(params.shadeLevels);
+
   let count = 0;
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const cell = grid.cells[count];
-      const x = col * cell;
-      const y = row * cell;
       const vd = vasilData[4 * count];
-      const pd = plinoData[4 * count];
       const isVasil = checkVal(vd);
-      const isPlino = checkVal(pd);
       if (isVasil) {
-        const radius = vd / 200;
-        cell.drawDot(framePaths, radius);
-      }
-      if (isPlino) {
-        const radius = pd / 200;
-        cell.drawDot(framePaths, radius);
+        cell.drawLetter(vasilPaths, vd, params.textScale, shading);
       }
       count++;
     }
@@ -105,17 +103,12 @@ const sketch = async ({ context, width, height, units, exporting, update }) => {
   // EXPORT + RENDERING
   return ({ context, width, height, units, exporting }) => {
 
-
-
-    // Convert the paths into polylines and clip to bounds
-    let lines = pathsToPolylines(framePaths, { units: settings.units });
-
-    // Clip to bounds, using a margin in working units
-    const box = [margin, margin, width - margin, height - margin];
-    lines = clipPolylinesToBox(lines, box);
+    let vasilLines = pathsToPolylines(vasilPaths, { units });
+    let plinoLines = pathsToPolylines(plinoPaths, { units });
 
     const groups = [
-      { id: 'lines', lines: lines },
+      { id: 'vasilLines', lines: vasilLines },
+      { id: 'plinoLines', lines: plinoLines },
 
     ];
 
@@ -125,7 +118,7 @@ const sketch = async ({ context, width, height, units, exporting, update }) => {
         width,
         height,
         units: settings.units,
-        strokeWidth: 0.2,
+        strokeWidth: params.penWidth,
         lineJoin: 'round',
         lineCap: 'round',
         inkscapeLayers: false // optioneel: dan worden het echte layers in inkscape
@@ -136,14 +129,14 @@ const sketch = async ({ context, width, height, units, exporting, update }) => {
 
     // PNG preview: render alles plat (zoals altijd)
     if (!exporting) {
-      return renderPaths([...lines], {
+      return renderPaths([...vasilLines, ...plinoLines], {
         context,
         width,
         height,
         units: settings.units,
         lineJoin: 'round',
         lineCap: 'round',
-        lineWidth: 0.2,
+        lineWidth: params.penWidth,
         optimize: false
       });
     }
@@ -192,6 +185,8 @@ class Cell {
     this.cellWidth = cellWidth;
     this.cellHeight = cellHeight;
     this.origin = origin;
+    this.frameCorner = { x: this.origin.x + this.col * this.cellWidth, y: this.origin.y + this.row * this.cellHeight };
+    this.cellCenter = { x: this.frameCorner.x + this.cellWidth / 2, y: this.frameCorner.y + this.cellHeight / 2 };
     this.id = id;
   }
 
@@ -209,6 +204,18 @@ class Cell {
     const p = createPath();
     p.arc(this.origin.x + this.col * this.cellWidth + this.cellWidth / 2, this.origin.y + this.row * this.cellHeight + this.cellHeight / 2, radius, 0, 2 * Math.PI)
     paths.push(p);
+  }
+
+  drawLetter(paths, value, scale, shading) {
+    const letter = selectChar(shading, value);
+    if (letter === false) {
+
+    } else {
+      // Actual hershey writing
+      const t = hershey.renderTextSVG(letter.toString());
+      const p = placeRaw(t, { x: this.cellCenter.x, y: this.cellCenter.y, scale: scale }, { mode: 'paths' });
+      paths.push(...p);
+    }
   }
 }
 
@@ -228,6 +235,52 @@ function fitRect(srcW, srcH, dstW, dstH, mode = 'contain') {
   return { x, y, w, h };
 }
 
-function generateLetter(type, paths, value){
+function generateShading(shadeLevels) {
+  const allChars = ['$', '@', 'B', '%', '8', '&', 'W', 'M', '#', '*', 'o', 'a', 'h', 'k', 'b', 'd',
+    'p', 'q', 'w', 'm', 'Z', 'O', '0', 'Q', 'L', 'C', 'J', 'U', 'Y', 'X', 'z', 'c', 'v', 'u', 'n', 'x', 'r', 'j',
+    'f', 't', '/', '\\', '|', '(', ')', '1', '{', '}', '[', ']', '?', '-', '_', '+', '~', '<', '>', 'i', '!', 'l', 'I', ';', ':',
+    '\"', '^', '`', '\'', '.'];
 
+
+  const levels = Math.round(allChars.length * shadeLevels);
+  const selection = [];
+  const values = [];
+  for (let level = 0; level < levels; level++) {
+    let index = Math.round(math.lerp(0, allChars.length - 1, level/levels));
+    let val = math.lerp(0, 255, level/levels);
+    let char = allChars[index];
+    selection.push(char);
+    values.push(val);
+  }
+  return { chars: selection, values: values };
+}
+
+function selectChar(shading, val) {
+  const selection = shading.chars;
+  const values = shading.values;
+  let char = [];
+  for (let index = 0; index < values.length - 1; index++) {
+    if (index === 0) {
+      let diff1 = values[index] - val;
+      if (diff1 > 0) {
+        char = '$';
+      }
+    }
+    else if (index == values.length - 1) {
+      let diff2 = values[index + 1] - val;
+      if (diff2 < 0) {
+        char = '\'';
+      }
+    }
+    else {
+      let diff1 = values[index] - val;
+      let diff2 = values[index + 1] - val;
+      if (diff1 <= 0 && diff2 >= 0) {
+        char = selection[index].toString();
+      }
+    }
+
+  }
+
+  return char;
 }

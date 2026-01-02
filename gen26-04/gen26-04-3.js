@@ -28,9 +28,20 @@ const settings = {
 
 
 const params = {
-  rows: 100,
+  rows: 250,
   margin: 10,
-  limitValue: 50
+  limitValue: 0.2,
+  vasTop: 210,
+  vas4: 155,
+  vas3: 100,
+  vas2: 50,
+  vasBottom: 10,
+  plinTop: 210,
+  plin4: 155,
+  plin3: 100,
+  plin2: 50,
+  plinBottom: 10,
+  penWidth: 0.5
 }
 
 
@@ -38,7 +49,8 @@ const params = {
 
 const sketch = async ({ context, width, height, units, exporting, update }) => {
   // Initialize all path arrays
-  const framePaths = [];
+  const plinoPaths = [];
+  const vasilPaths = [];
 
 
 
@@ -80,19 +92,15 @@ const sketch = async ({ context, width, height, units, exporting, update }) => {
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const cell = grid.cells[count];
-      const x = col * cell;
-      const y = row * cell;
       const vd = vasilData[4 * count];
       const pd = plinoData[4 * count];
       const isVasil = checkVal(vd);
       const isPlino = checkVal(pd);
       if (isVasil) {
-        const radius = vd / 200;
-        cell.drawDot(framePaths, radius);
+        cell.drawLetter('vasil', vasilPaths, vd, 0.05, 0.06);
       }
       if (isPlino) {
-        const radius = pd / 200;
-        cell.drawDot(framePaths, radius);
+        cell.drawLetter('plino', plinoPaths, pd, 0.05, 0.06);
       }
       count++;
     }
@@ -105,17 +113,12 @@ const sketch = async ({ context, width, height, units, exporting, update }) => {
   // EXPORT + RENDERING
   return ({ context, width, height, units, exporting }) => {
 
-
-
-    // Convert the paths into polylines and clip to bounds
-    let lines = pathsToPolylines(framePaths, { units: settings.units });
-
-    // Clip to bounds, using a margin in working units
-    const box = [margin, margin, width - margin, height - margin];
-    lines = clipPolylinesToBox(lines, box);
+    let vasilLines = pathsToPolylines(vasilPaths, { units });
+    let plinoLines = pathsToPolylines(plinoPaths, { units });
 
     const groups = [
-      { id: 'lines', lines: lines },
+      { id: 'vasilLines', lines: vasilLines },
+      { id: 'plinoLines', lines: plinoLines },
 
     ];
 
@@ -125,7 +128,7 @@ const sketch = async ({ context, width, height, units, exporting, update }) => {
         width,
         height,
         units: settings.units,
-        strokeWidth: 0.2,
+        strokeWidth: params.penWidth,
         lineJoin: 'round',
         lineCap: 'round',
         inkscapeLayers: false // optioneel: dan worden het echte layers in inkscape
@@ -136,14 +139,14 @@ const sketch = async ({ context, width, height, units, exporting, update }) => {
 
     // PNG preview: render alles plat (zoals altijd)
     if (!exporting) {
-      return renderPaths([...lines], {
+      return renderPaths([...vasilLines, ...plinoLines], {
         context,
         width,
         height,
         units: settings.units,
         lineJoin: 'round',
         lineCap: 'round',
-        lineWidth: 0.2,
+        lineWidth: params.penWidth,
         optimize: false
       });
     }
@@ -192,6 +195,8 @@ class Cell {
     this.cellWidth = cellWidth;
     this.cellHeight = cellHeight;
     this.origin = origin;
+    this.frameCorner = { x: this.origin.x + this.col * this.cellWidth, y: this.origin.y + this.row * this.cellHeight };
+    this.cellCenter = { x: this.frameCorner.x + this.cellWidth / 2, y: this.frameCorner.y + this.cellHeight / 2 };
     this.id = id;
   }
 
@@ -209,6 +214,77 @@ class Cell {
     const p = createPath();
     p.arc(this.origin.x + this.col * this.cellWidth + this.cellWidth / 2, this.origin.y + this.row * this.cellHeight + this.cellHeight / 2, radius, 0, 2 * Math.PI)
     paths.push(p);
+  }
+
+  drawLetter(type, paths, value, scaleMin, scaleMax) {
+    // $@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\|()1{}[]?-_+~<>i!lI;:,"^`'.
+    // SaLvi
+    let letter = [];
+    let valMin = [];
+    let valMax = [];
+
+    if (type === 'vasil') {
+      if (value > params.vasTop) {
+        letter = 'i'
+        valMin = params.vasTop;
+        valMax = 255;
+      }
+      else if (value > params.vas4 && value <= params.vasTop) {
+        letter = 'v';
+        valMin = params.vas4;
+        valMax = params.vasTop;
+      }
+      else if (value > params.vas3 && value <= params.vas4) {
+        letter = 'L';
+        valMin = params.vas3;
+        valMax = params.vas4;
+      }
+      else if (value > params.vas2 && value <= params.vas3) {
+        letter = 'a';
+        valMin = params.vas2;
+        valMax = params.vas3;
+      }
+      else if (value > params.vasBottom && value <= params.vas2) {
+        letter = 'S';
+        valMin = params.vasBottom;
+        valMax = params.vas2;
+      }
+
+    }
+    // opLni
+    else if (type === 'plino') {
+      if (value > params.plinTop) {
+        letter = 'i'
+        valMin = params.plinTop;
+        valMax = 255;
+      }
+      else if (value > params.plin4 && value <= params.plinTop) {
+        letter = 'n';
+        valMin = params.plin4;
+        valMax = params.plinTop;
+      }
+      else if (value > params.plin3 && value <= params.plin4) {
+        letter = 'L';
+        valMin = params.plin3;
+        valMax = params.plin4;
+      }
+      else if (value > params.plin2 && value <= params.plin3) {
+        letter = 'p';
+        valMin = params.plin2;
+        valMax = params.plin3;
+      }
+      else if (value > params.plinBottom && value <= params.plin2) {
+        letter = 'o';
+        valMin = params.plinBottom;
+        valMax = params.plin2;
+      }
+
+    }
+    const scale = math.mapRange(value, valMin, valMax, scaleMin, scaleMax);
+    const t = hershey.renderTextSVG(letter.toString());
+    console.log(this.cellCenter);
+    const p = placeRaw(t, { x: this.cellCenter.x, y: this.cellCenter.y, scale: scale }, { mode: 'paths' });
+    paths.push(...p);
   }
 }
 
@@ -228,6 +304,3 @@ function fitRect(srcW, srcH, dstW, dstH, mode = 'contain') {
   return { x, y, w, h };
 }
 
-function generateLetter(type, paths, value){
-
-}

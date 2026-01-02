@@ -29,7 +29,7 @@ const f = fibonacci(n);
 
 
 const params = {
-  rows: 100,
+  rows: 20,
   margin: 10,
   frequency: 0.025,
   noiseSpread: 1,

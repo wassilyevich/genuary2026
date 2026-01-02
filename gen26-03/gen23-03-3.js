@@ -29,7 +29,7 @@ const f = fibonacci(n);
 
 
 const params = {
-  rows: 300,
+  rows: 20,
   margin: 10,
   frequency: 0.025,
   noiseSpread: 1,
@@ -62,6 +62,7 @@ const sketch = ({ context, width, height, units }) => {
   return ({ context, width, height, units, exporting }) => {
     // Convert the paths into polylines so we can apply line-clipping
     // When converting, pass the 'units' to get a nice default curve resolution
+    console.log(valPaths);
     let frameLines = pathsToPolylines(framePaths, { units });
     let valLines = pathsToPolylines(valPaths, { units });
 
