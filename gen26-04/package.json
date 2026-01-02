@@ -1,8 +1,8 @@
 {
-  "name": "gen26-03",
+  "name": "gen26-04",
   "version": "1.0.0",
   "description": "",
-  "main": "gen23-03-1.js",
+  "main": "gen26-04-1.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
