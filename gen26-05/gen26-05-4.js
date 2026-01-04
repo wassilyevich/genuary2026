@@ -9,7 +9,7 @@ const settings = {
   dimensions: [2048, 2048],
   animate: true,
   fps: 30,
-  duration: 10
+  duration: 15
 };
 
 // Generative parameters
@@ -18,20 +18,28 @@ const params = {
   rows: 3,
   cols: 21,
   dotRadius: 3,
-  drawRadius: 3,
-  minAgents: 10,
+  drawRadius: 8,
+  minAgents: 300,
   maxAgents: 500,
   lookRadius: 5,
-  smoothfactor: 300,
-  linearfactor: 0.8,
-  step: 5,
-  delayFactor: 0.8,
-  minOffset: 1,
-  maxOffset: 2
+  smoothfactor: 100,
+  linearfactor: 0.3,
+  step: 20,
+  delayFactor: 0.1,
+  minOffset: 0,
+  maxOffset: 0,
+  connectRadius: 120,
+  lineWidth: 0.13
 }
 
-const sketch = (props) => {
-  const { exportFrame, stop, play, render, width, height } = props;
+const sketch = ({ exportFrame, pause, stop, play, togglePlay,render, width, height }) => {
+  // FUNCTIONALITIES
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'p') {
+      togglePlay();
+    }
+  });
+
 
   // POSITIONING
   var drawWidth = width - 2 * params.margin;
@@ -44,12 +52,20 @@ const sketch = (props) => {
   var origin = { x: params.margin, y: (height - drawHeight) / 2 };
 
   // COLORS
-  const colors = sanzo.january();
-  const combination = random.pick(colors).colors;
+  const colors = sanzo.redish;
+  const shuffledColors = random.shuffle(colors);
+  const color1 = Color.parse(sanzo.CMYK2RGB(shuffledColors[0].CMYK)).hex;
+  const color2 = Color.parse(sanzo.CMYK2RGB(shuffledColors[1].CMYK)).hex;
+  const color3 = Color.parse(sanzo.CMYK2RGB(shuffledColors[2].CMYK)).hex;
+  const color4 = Color.parse(sanzo.CMYK2RGB(shuffledColors[3].CMYK)).hex;
+  const color5 = Color.parse(sanzo.CMYK2RGB(shuffledColors[4].CMYK)).hex;
 
   // GRID CREATION
-  const grid1 = new Grid(rows, cols, cellWidth, cellHeight, origin, 1, combination);
-  const grid2 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y - drawHeight }, 2, combination);
+  const grid1 = new Grid(rows, cols, cellWidth, cellHeight, origin, 1, color1);
+  const grid2 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y - drawHeight * 1.2 }, 2, color2);
+  const grid3 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y - drawHeight * 2.4 }, 3, color3);
+  const grid4 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y + drawHeight * 1.2 }, 4, color4);
+  const grid5 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y + drawHeight * 2.4 }, 5, color5);
   const nPaths = 5;
   // AGENT CREATION
   const agentArray1 = [];
@@ -70,9 +86,41 @@ const sketch = (props) => {
       agentArray2.push(Math.round(random.range(params.minAgents / 2, params.maxAgents / 2)));
     }
   }
+  const agentArray3 = [];
+  for (let i = 0; i < nPaths; i++) {
+    if (i == 0) {
+      agentArray3.push(Math.round(random.range(params.minAgents, params.maxAgents)));
+    }
+    else {
+      agentArray3.push(Math.round(random.range(params.minAgents / 2, params.maxAgents / 2)));
+    }
+  }
+  const agentArray4 = [];
+  for (let i = 0; i < nPaths; i++) {
+    if (i == 0) {
+      agentArray4.push(Math.round(random.range(params.minAgents, params.maxAgents)));
+    }
+    else {
+      agentArray4.push(Math.round(random.range(params.minAgents / 2, params.maxAgents / 2)));
+    }
+  }
+  const agentArray5 = [];
+  for (let i = 0; i < nPaths; i++) {
+    if (i == 0) {
+      agentArray5.push(Math.round(random.range(params.minAgents, params.maxAgents)));
+    }
+    else if (i == 1) {
+      agentArray5.push(Math.round(random.range(params.minAgents / 7, params.maxAgents / 7)));
+    }
+    else {
+      agentArray5.push(Math.round(random.range(params.minAgents / 4, params.maxAgents / 4)));
+    }
+  }
   grid1.initAgents(agentArray1);
   grid2.initAgents(agentArray2);
-  console.log(grid1, grid2);
+  grid3.initAgents(agentArray3);
+  grid4.initAgents(agentArray4);
+  grid5.initAgents(agentArray5);
 
   // Path creation
   const paths = [];
@@ -82,6 +130,8 @@ const sketch = (props) => {
   const path3 = [22, 23, 44, 42, 0, 2, 3, 45, 47, 48, 6, 50, 8, 9, 51, 53, 11, 12, 54];
   const path4 = [22, 23, 44, 42, 0, 2, 3, 45, 47, 48, 6, 50, 8, 9, 51, 53, 11, 12, 14, 56, 57, 15, 17, 38, 36, 59, 60, 62, 41, 39, 18];
   paths.push(path0, path1, path2, path3, path4);
+
+
   grid1.agents.forEach(agent => {
     agent.initPath(paths[agent.groupid]);
     agent.findCoords(grid1.entities);
@@ -92,49 +142,158 @@ const sketch = (props) => {
     agent.findCoords(grid2.entities);
     agent.spawn();
   });
+  grid3.agents.forEach(agent => {
+    agent.initPath(paths[agent.groupid]);
+    agent.findCoords(grid3.entities);
+    agent.spawn();
+  });
+  grid4.agents.forEach(agent => {
+    agent.initPath(paths[agent.groupid]);
+    agent.findCoords(grid4.entities);
+    agent.spawn();
+  });
+  grid5.agents.forEach(agent => {
+    agent.initPath(paths[agent.groupid]);
+    agent.findCoords(grid5.entities);
+    agent.spawn();
+  });
 
-  const input = {
+  // Editing grid
+
+  // GRID1
+  const input1 = {
     step: true,
-    stepMin: 1,
-    stepMax: 10,
+    stepMin: 10,
+    stepMax: 20,
     smoothfactor: true,
     smoothMin: 200,
     smoothMax: 400,
     linearfactor: true,
-    linearMin: 0.1,
+    linearMin: 0.7,
     linearMax: 0.8,
-    randomInterpol: false,
-    interpolMin: 0.1,
+    randomInterpol: true,
+    interpolMin: 0.7,
+    interpolMax: 0.8,
+    // drawRadius: true,
+    // drawMin: 3,
+    // drawMax: 15
+    delayFactor: true,
+    delayValue: 0.1
+  }
+  grid1.makeUnique(input1);
+
+  // GRID2
+  const input2 = {
+    step: true,
+    stepMin: 2,
+    stepMax: 3,
+    smoothfactor: true,
+    smoothMin: 200,
+    smoothMax: 400,
+    linearfactor: true,
+    linearMin: 0.7,
+    linearMax: 0.8,
+    randomInterpol: true,
+    interpolMin: 0.7,
     interpolMax: 0.8,
     drawRadius: true,
-    drawMin: 3, 
-    drawMax: 15
+    drawMin: 5,
+    drawMax: 13
+    // delayFactor: true,
+    // delayValue: 0.1
   }
+  grid2.makeUnique(input2);
 
-  grid2.makeUnique(input);
+  // GRID3
+  const input3 = {
+    step: true,
+    stepMin: 6,
+    stepMax: 9,
+    // smoothfactor: true,
+    // smoothMin: 200,
+    // smoothMax: 400,
+    // linearfactor: true,
+    // linearMin: 0.7,
+    // linearMax: 0.8,
+    randomInterpol: true,
+    interpolMin: 0.3,
+    interpolMax: 0.8,
+    drawRadius: true,
+    drawMin: 2,
+    drawMax: 8,
+    delayFactor: true,
+    delayValue: 0.4
+  }
+  grid3.makeUnique(input3);
 
+  // GRID4
+  const input4 = {
+    step: true,
+    stepMin: 6,
+    stepMax: 16,
+    smoothfactor: true,
+    smoothMin: 100,
+    smoothMax: 600,
+    // linearfactor: true,
+    // linearMin: 0.7,
+    // linearMax: 0.8,
+    // randomInterpol: false,
+    // interpolMin: 0.4,
+    // interpolMax: 0.8,
+    drawRadius: true,
+    drawMin: 10,
+    drawMax: 18,
+    delayFactor: true,
+    delayValue: 0.9
+  }
+  grid4.makeUnique(input4);
+  grid4.setInterpol(0.1);
 
+  // GRID5
+  const input5 = {
+    step: true,
+    stepMin: 8,
+    stepMax: 8,
+    smoothfactor: true,
+    smoothMin: 100,
+    smoothMax: 600,
+    // linearfactor: true,
+    // linearMin: 0.7,
+    // linearMax: 0.8,
+    // randomInterpol: false,
+    // interpolMin: 0.4,
+    // interpolMax: 0.8,
+    drawRadius: true,
+    drawMin: 7,
+    drawMax: 7,
+    delayFactor: true,
+    delayValue: 0.5
+  }
+  grid5.makeUnique(input5);
+  grid5.setDrawLines(true);
 
 
 
 
   // ACTUAL RENDERING
-  return ({ context, width, height, frame, time }) => {
+  return ({ context, width, height, frame, time, playhead }) => {
     context.fillStyle = 'white';
     context.fillRect(0, 0, width, height);
     // grid.drawEntities(context);
 
+    grid1.setStep(params.step * playhead);
     grid1.agents.forEach(agent => {
       if (!agent.launched) {
         agent.launch(time);
       }
       else {
-        agent.move(params.step, 50);
+        agent.move();
         agent.updateTarget();
         agent.draw(context);
       }
     });
 
+    grid2.setInterpol(playhead);
     grid2.agents.forEach(agent => {
       if (!agent.launched) {
         agent.launch(time);
@@ -143,6 +302,43 @@ const sketch = (props) => {
         agent.move();
         agent.updateTarget();
         agent.draw(context);
+      }
+    });
+
+    grid3.agents.forEach(agent => {
+      if (!agent.launched) {
+        agent.launch(time);
+      }
+      else {
+        agent.move();
+        agent.updateTarget();
+        agent.draw(context);
+      }
+    });
+
+    grid4.agents.forEach(agent => {
+      if (!agent.launched) {
+        agent.launch(time);
+      }
+      else {
+        agent.move();
+        agent.updateTarget();
+        agent.draw(context);
+      }
+    });
+
+    grid5.setStep(math.mapRange(playhead, 0, 1, 7, 10, true));
+    grid5.agents.forEach(agent => {
+      if (!agent.launched) {
+        agent.launch(time);
+      }
+      else {
+        agent.move();
+        agent.updateTarget();
+        agent.draw(context);
+        if (agent.drawLines) {
+          agent.drawConnections(context, grid5.agents, params.lineWidth);
+        }
       }
     });
 
@@ -157,7 +353,7 @@ canvasSketch(sketch, settings);
 
 // Grid class
 class Grid {
-  constructor(rows, cols, cellWidth, cellHeight, origin, id, colors) {
+  constructor(rows, cols, cellWidth, cellHeight, origin, id, color) {
     this.rows = rows;
     this.cols = cols;
     this.cellWidth = cellWidth;
@@ -167,7 +363,7 @@ class Grid {
     this.entities = [];
     this.init();
     this.agents = [];
-    this.colors = colors;
+    this.color = color;
   }
 
   init() {
@@ -186,17 +382,21 @@ class Grid {
     })
   }
 
+  drawConnections(context) {
+    this.agents.forEach(agent => {
+      agent.drawConnections(context);
+    })
+  }
+
   initAgents(agentArray) {
-    const shuffledColors = random.shuffle(this.colors);
     let groupcount = 0;
     agentArray.forEach(number => {
       // const selectedColor = shuffledColors[groupcount];
       // const color = Color.parse(sanzo.CMYK2RGB(selectedColor.CMYK)).hex;
-      const color = 'black';
       const offsetbounds = random.range(params.minOffset, params.maxOffset);
       const groupOffset = { x: random.range(-offsetbounds, offsetbounds), y: random.range((-offsetbounds, offsetbounds)) };
       for (let i = 0; i < number; i++) {
-        const agent = new Agent(22, i, groupcount, params.lookRadius, params.smoothfactor, params.linearfactor, color, groupOffset, params.step)
+        const agent = new Agent(22, i, groupcount, params.lookRadius, params.smoothfactor, params.linearfactor, this.color, groupOffset, params.step)
         this.agents.push(agent);
 
       }
@@ -210,6 +410,31 @@ class Grid {
       agent.makeUnique(input);
     });
   }
+
+  setInterpol(val) {
+    this.agents.forEach(agent => {
+      agent.setInterpol(val);
+    });
+  }
+
+  setStep(val) {
+    this.agents.forEach(agent => {
+      agent.setStep(val);
+    });
+  }
+
+  setDrawRadius(val) {
+    this.agents.forEach(agent => {
+      agent.setDrawRadius(val);
+    });
+  }
+
+  setDrawLines(val) {
+    this.agents.forEach(agent => {
+      agent.setDrawLines(val);
+    });
+  }
+
 
 
 }
@@ -258,10 +483,14 @@ class Agent {
     this.step = step;
     this.interpol = 1;
     this.drawRadius = params.drawRadius;
+    this.delayFactor = params.delayFactor;
+    this.connectAgents = [];
+    this.connectAgentsCoords = [];
+    this.drawLines = false;
   }
 
   launch(frame) {
-    if (this.id * params.delayFactor < frame) {
+    if (this.id * this.delayFactor < frame) {
       this.launched = true;
     }
   }
@@ -291,20 +520,24 @@ class Agent {
     if (this.dir) {
       if (distance(this.position, this.target) < this.lookRadius && this.targetDot < this.path.length - 1) {
         this.targetDot++;
+        this.position = this.target;
       }
       else if (distance(this.position, this.target) < this.lookRadius && this.targetDot == this.path.length - 1) {
         this.dir = false;
         this.targetDot--;
+        this.position = this.target;
       }
     }
     // REVERSE DIRECTION
     else {
       if (distance(this.position, this.target) < this.lookRadius && this.targetDot > 0) {
         this.targetDot--;
+        this.position = this.target;
       }
       else if (distance(this.position, this.target) < this.lookRadius && this.targetDot == 0) {
         this.dir = true;
         this.targetDot++;
+        this.position = this.target;
       }
     }
     this.target = { x: this.pathCoords[this.targetDot].x, y: this.pathCoords[this.targetDot].y };
@@ -313,8 +546,8 @@ class Agent {
   move() {
     const dist = { x: this.target.x - this.position.x, y: this.target.y - this.position.y };
     const vector = {
-      x: (dist.x / this.smoothfactor)*(1-this.interpol) + normalize(dist).x*this.interpol*this.linearfactor,
-      y: (dist.y / this.smoothfactor)*(1-this.interpol) + normalize(dist).y*this.interpol*this.linearfactor
+      x: (dist.x / this.smoothfactor) * (1 - this.interpol) + normalize(dist).x * this.interpol * this.linearfactor,
+      y: (dist.y / this.smoothfactor) * (1 - this.interpol) + normalize(dist).y * this.interpol * this.linearfactor
     }
 
     // const vector = normalize({ x: this.target.x - this.position.x, y: this.target.y - this.position.y });
@@ -340,15 +573,31 @@ class Agent {
     if (input.linearfactor) {
       this.linearfactor = random.range(input.linearMin, input.linearMax);
     }
-    if (input.setInterpol) {
-      this.interpol = input.interpol;
-    }
     if (input.randomInterpol) {
       this.interpol = random.range(input.interpolMin, input.interpolMax);
     }
     if (input.drawRadius) {
       this.drawRadius = random.range(input.drawMin, input.drawMax);
     }
+    if (input.delayFactor) {
+      this.delayFactor = input.delayValue;
+    }
+  }
+
+  setInterpol(val) {
+    this.interpol = val;
+  }
+
+  setStep(val) {
+    this.step = val;
+  }
+
+  setDrawLines(val) {
+    this.drawLines = val;
+  }
+
+  setDrawRadius(val) {
+    this.drawRadius = val;
   }
 
 
@@ -360,6 +609,24 @@ class Agent {
     context.fill();
     // context.font = "15px serif";
     // context.fillText(this.id.toString(), this.position.x, this.position.y + 2 * params.dotRadius);
+    context.restore();
+  }
+
+  drawConnections(context, agents, lineWidth) {
+    context.strokeStyle = 'black';
+    context.save();
+    agents.forEach(agent => {
+      if (agent.launched) {
+        const dist = distance(agent.position, this.position);
+        if (dist < params.connectRadius) {
+          context.beginPath();
+          context.lineWidth = math.mapRange(dist, 0, params.connectRadius, 0.01, lineWidth);
+          context.moveTo(this.position.x, this.position.y);
+          context.lineTo(agent.position.x, agent.position.y);
+          context.stroke();
+        }
+      }
+    });
     context.restore();
   }
 }
