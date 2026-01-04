@@ -8,8 +8,11 @@ const sanzo = require('sanzo-color');
 const settings = {
   dimensions: [2048, 2048],
   animate: true,
-  fps: 30,
-  duration: 15
+  fps: 24,
+  duration: 5,
+  attributes: {
+    alpha: true
+  }
 };
 
 // Generative parameters
@@ -29,16 +32,28 @@ const params = {
   minOffset: 0,
   maxOffset: 0,
   connectRadius: 120,
-  lineWidth: 0.13
+  lineWidth: 0.08
 }
 
-const sketch = ({ exportFrame, pause, stop, play, togglePlay,render, width, height }) => {
+let didResetForExport = false;
+
+const sketch = ({ exportFrame, pause, stop, play, togglePlay, render, width, height }) => {
   // FUNCTIONALITIES
   window.addEventListener('keydown', (event) => {
-    if (event.key === 'p') {
-      togglePlay();
+    if (event.key === 'r') {
+      stop();
+      resetAll();
+      render();
+      play();
     }
   });
+
+
+  const resetAll = () => {
+    [grid1, grid2, grid3, grid4, grid5].forEach(grid => {
+      grid.agents.forEach(a => a.reset());
+    });
+  };
 
 
   // POSITIONING
@@ -54,18 +69,19 @@ const sketch = ({ exportFrame, pause, stop, play, togglePlay,render, width, heig
   // COLORS
   const colors = sanzo.redish;
   const shuffledColors = random.shuffle(colors);
-  const color1 = Color.parse(sanzo.CMYK2RGB(shuffledColors[0].CMYK)).hex;
-  const color2 = Color.parse(sanzo.CMYK2RGB(shuffledColors[1].CMYK)).hex;
-  const color3 = Color.parse(sanzo.CMYK2RGB(shuffledColors[2].CMYK)).hex;
-  const color4 = Color.parse(sanzo.CMYK2RGB(shuffledColors[3].CMYK)).hex;
-  const color5 = Color.parse(sanzo.CMYK2RGB(shuffledColors[4].CMYK)).hex;
+  // const color1 = Color.parse(sanzo.CMYK2RGB(shuffledColors[0].CMYK)).hex;
+  // const color2 = Color.parse(sanzo.CMYK2RGB(shuffledColors[1].CMYK)).hex;
+  // const color3 = Color.parse(sanzo.CMYK2RGB(shuffledColors[2].CMYK)).hex;
+  // const color4 = Color.parse(sanzo.CMYK2RGB(shuffledColors[3].CMYK)).hex;
+  // const color5 = Color.parse(sanzo.CMYK2RGB(shuffledColors[4].CMYK)).hex;
+  const color = 'black';
 
   // GRID CREATION
-  const grid1 = new Grid(rows, cols, cellWidth, cellHeight, origin, 1, color1);
-  const grid2 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y - drawHeight * 1.2 }, 2, color2);
-  const grid3 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y - drawHeight * 2.4 }, 3, color3);
-  const grid4 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y + drawHeight * 1.2 }, 4, color4);
-  const grid5 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y + drawHeight * 2.4 }, 5, color5);
+  const grid1 = new Grid(rows, cols, cellWidth, cellHeight, origin, 1, color);
+  const grid2 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y - drawHeight * 1.2 }, 2, color);
+  const grid3 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y - drawHeight * 2.4 }, 3, color);
+  const grid4 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y + drawHeight * 1.2 }, 4, color);
+  const grid5 = new Grid(rows, cols, cellWidth, cellHeight, { x: origin.x, y: origin.y + drawHeight * 2.4 }, 5, color);
   const nPaths = 5;
   // AGENT CREATION
   const agentArray1 = [];
@@ -276,9 +292,21 @@ const sketch = ({ exportFrame, pause, stop, play, togglePlay,render, width, heig
 
 
   // ACTUAL RENDERING
-  return ({ context, width, height, frame, time, playhead }) => {
-    context.fillStyle = 'white';
-    context.fillRect(0, 0, width, height);
+  return ({ context, width, height, frame, time, playhead, exporting, recording }) => {
+    const isCapturing = exporting || recording;
+    if (isCapturing && frame == 0 && !didResetForExport) {
+      resetAll();
+      didResetForExport = true;
+    }
+
+    if (!isCapturing && didResetForExport) {
+      didResetForExport = false;
+    }
+
+
+    // context.fillStyle = 'white';
+    // context.fillRect(0, 0, width, height);
+    context.clearRect(0, 0, width, height);
     // grid.drawEntities(context);
 
     grid1.setStep(params.step * playhead);
@@ -293,7 +321,7 @@ const sketch = ({ exportFrame, pause, stop, play, togglePlay,render, width, heig
       }
     });
 
-    grid2.setInterpol(playhead);
+    grid2.setInterpol(1 - playhead);
     grid2.agents.forEach(agent => {
       if (!agent.launched) {
         agent.launch(time);
@@ -347,6 +375,8 @@ const sketch = ({ exportFrame, pause, stop, play, togglePlay,render, width, heig
 
 // RUN THE SKETCH
 canvasSketch(sketch, settings);
+
+
 
 
 // CLASSES
@@ -435,6 +465,12 @@ class Grid {
     });
   }
 
+  reset() {
+    this.agents.forEach(agent => {
+      agent.reset();
+    })
+  }
+
 
 
 }
@@ -512,7 +548,13 @@ class Agent {
   spawn() {
     this.position = { x: this.pathCoords[0].x, y: this.pathCoords[0].y };
     this.targetDot = 1;
-    this.target = { x: this.pathCoords[this.targetDot].x, y: this.pathCoords[this.targetDot].y }
+    this.target = { x: this.pathCoords[this.targetDot].x, y: this.pathCoords[this.targetDot].y };
+    this.dir = true;
+    this.launched = false;
+  }
+
+  reset() {
+    this.spawn();
   }
 
   updateTarget() {
