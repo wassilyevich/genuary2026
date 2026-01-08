@@ -9,7 +9,7 @@ const settings = {
   dimensions: [2048, 2048],
   animate: true,
   fps: 24,
-  duration: 5,
+  duration: 100,
   attributes: {
     alpha: true
   }
@@ -22,8 +22,8 @@ const params = {
   cols: 21,
   dotRadius: 3,
   drawRadius: 8,
-  minAgents: 300,
-  maxAgents: 500,
+  minAgents: 500,
+  maxAgents: 800,
   lookRadius: 5,
   smoothfactor: 100,
   linearfactor: 0.3,
@@ -126,7 +126,7 @@ const sketch = ({ exportFrame, pause, stop, play, togglePlay, render, width, hei
       agentArray5.push(Math.round(random.range(params.minAgents, params.maxAgents)));
     }
     else if (i == 1) {
-      agentArray5.push(Math.round(random.range(params.minAgents / 7, params.maxAgents / 7)));
+      agentArray5.push(Math.round(random.range(params.minAgents / 4, params.maxAgents / 4)));
     }
     else {
       agentArray5.push(Math.round(random.range(params.minAgents / 4, params.maxAgents / 4)));
