@@ -13,6 +13,7 @@ const settings = {
   animate: true
 };
 
+let didResetForExport = false;
 
 const params = {
   // bulb controls (you'll tune these)
@@ -20,26 +21,26 @@ const params = {
   bulbRadius: 100,
 
   // mosquito flock tuning
-  mosquitoCount: 160,
-  neighborRadius: 85,
-  desiredSeparation: 18,
+  mosquitoCount: 300,
+  neighborRadius: 30,
+  desiredSeparation: 50,
 
-  maxSpeed: 2.1,
-  maxForce: 0.085,
+  maxSpeed: 3,
+  maxForce: 0.2,
 
   // flock weights (mosquito-ish)
-  wSeparation: 1.8,
-  wAlignment: 0.55,
-  wCohesion: 0.65,
+  wSeparation: 3,
+  wAlignment: 0.2,
+  wCohesion: 0.8,
 
   // bulb behaviors
   wAttract: 1.2,          // attraction to bulb (lamp on)
-  wRepelBurn: 3.2,        // strong push out when inside radius
-  burnCooldownFrames: 18, // prevents instant re-entry "orbiting"
+  wRepelBurn: 60,        // strong push out when inside radius
+  burnCooldownFrames: 50, // prevents instant re-entry "orbiting"
 
   // extra mosquito flavor
-  wWander: 0.35,
-  wanderJitter: 0.7
+  wWander: 0.9,
+  wanderJitter: 0.6
 };
 
 
@@ -63,12 +64,17 @@ const sketch = ({ context, width, height }) => {
     }
   });
 
+ 
 
 
 
 
 
-  return ({ context, width, height }) => {
+
+  return ({ context, width, height, exporting, recording }) => {
+
+    
+
     if (lamp.state) {
       context.fillStyle = 'white';
     }
@@ -187,6 +193,7 @@ class Lamp {
 
 class Mosquito {
   constructor(x, y, opts = {}) {
+    this.start = {x, y}
     this.pos = { x, y };
     const a = random.range(0, Math.PI * 2);
     this.vel = { x: Math.cos(a), y: Math.sin(a) };
@@ -207,6 +214,25 @@ class Mosquito {
   applyForce(f) {
     this.acc.x += f.x;
     this.acc.y += f.y;
+  }
+
+  reset(){
+    this.pos = this.start;
+    const a = random.range(0, Math.PI * 2);
+    this.vel = { x: Math.cos(a), y: Math.sin(a) };
+    this.vel = clampMag(this.vel.x, this.vel.y, opts.maxSpeed || 2);
+
+    this.acc = { x: 0, y: 0 };
+
+    this.maxSpeed = opts.maxSpeed ?? 2.1;
+    this.maxForce = opts.maxForce ?? 0.085;
+
+    // "burn" state
+    this.burnCooldown = 0;
+
+    // wander state
+    this.wanderTheta = random.range(0, Math.PI * 2);
+
   }
 
   // --- Boids core rules ---
