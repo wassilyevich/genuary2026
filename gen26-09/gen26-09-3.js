@@ -9,13 +9,20 @@ const settings = {
     dimensions: [2048, 2048],
 };
 
+const params = {
+    ruleSet: "B3678/S34678",
+    dimFact: 1,
+    simHz: 30,
+};
 const sketch = ({ canvas, gl, width, height }) => {
     const regl = createRegl({ gl });
 
     // ---- SIM DIMENSIONS (aantal cellen) ----
-    const simW = width / 2;
-    const simH = height / 2;
-
+    const simW = Math.floor(width / params.dimFact);
+    const simH = Math.floor(height / params.dimFact);
+    const simHz = params.simHz;
+    let acc = 0;
+    let lastTime = 0;
     const makeFBO = () =>
         regl.framebuffer({
             color: regl.texture({
@@ -89,20 +96,17 @@ const sketch = ({ canvas, gl, width, height }) => {
     varying vec2 vUv;
     uniform sampler2D uPrev;
     uniform vec2 uTexel;
-
-    // brush (tekenen)
-    uniform vec2 uBrushPos;     // uv
-    uniform float uBrushDown;   // 0/1
-    uniform float uBrushRadius; // uv units
+    uniform float uBirthMask;
+    uniform float uSurviveMask;
 
     float cell(vec2 uv) {
       // state zit in R kanaal, threshold op 0.5
       return step(0.5, texture2D(uPrev, uv).r);
     }
-
-    float circle(vec2 uv, vec2 c, float r) {
-      float d = length(uv - c);
-      return 1.0 - smoothstep(r, r * 1.1, d);
+    
+    float hasBit(float mask, float n){
+        float p = pow(2.0, n);
+        return step(0.5, mod(floor(mask/p), 2.0));
     }
 
     void main () {
@@ -121,19 +125,14 @@ const sketch = ({ canvas, gl, width, height }) => {
 
       float alive = cell(uv);
 
-      // GoL regels (zonder float-equality issues)
-      float born    = (1.0 - alive) * step(2.5, n) * (1.0 - step(3.5, n)); // n in [3]
-      float survive = alive * step(1.5, n) * (1.0 - step(3.5, n));         // n in [2..3]
-      float nextAlive = clamp(born + survive, 0.0, 1.0);
-
-      // brush: voeg levende cellen toe
-      float ink = circle(uv, uBrushPos, uBrushRadius) * uBrushDown;
-      nextAlive = max(nextAlive, step(0.5, ink));
-
-      gl_FragColor = vec4(nextAlive, 0.0, 0.0, 1.0);
+     float born    = (1.0 - alive) * hasBit(uBirthMask, n);
+     float survive = alive * hasBit(uSurviveMask, n);
+     float nextAlive = clamp(born + survive, 0.0, 1.0);
+     gl_FragColor = vec4(nextAlive, 0.0, 0.0, 1.0);
     }
   `;
 
+    const ruleState = parseRule(params.ruleSet);
     const updatePass = regl({
         vert,
         frag: lifeFrag,
@@ -141,9 +140,8 @@ const sketch = ({ canvas, gl, width, height }) => {
         uniforms: {
             uPrev: (_, props) => props.prev,
             uTexel: [1 / simW, 1 / simH],
-            uBrushPos: () => brushPos,
-            uBrushDown: () => (brushDown ? 1 : 0),
-            uBrushRadius: () => brushRadius,
+            uBirthMask: () => ruleState.birthMask,
+            uSurviveMask: () => ruleState.surviveMask,
         },
         framebuffer: (_, props) => props.next,
     });
@@ -171,34 +169,7 @@ const sketch = ({ canvas, gl, width, height }) => {
     let paused = false;
     let stepOnce = false;
 
-    let brushDown = false;
-    let brushPos = [0.5, 0.5];
-    let brushRadius = 0.015; // in uv (dus relatief)
-
-    const setBrushFromEvent = (e) => {
-        const r = canvas.getBoundingClientRect();
-        const x = (e.clientX - r.left) / r.width;
-        const y = 1.0 - (e.clientY - r.top) / r.height;
-        brushPos = [x, y];
-    };
-
-    canvas.addEventListener("mousedown", (e) => {
-        brushDown = true;
-        setBrushFromEvent(e);
-    });
-    window.addEventListener("mouseup", () => (brushDown = false));
-    canvas.addEventListener("mousemove", setBrushFromEvent);
-
-    window.addEventListener("keydown", (e) => {
-        if (e.key === " ") paused = !paused; // pause
-        if (e.key === "s") stepOnce = true; // single step
-        if (e.key === "r") randomize = true; // reset random
-        if (e.key === "[") brushRadius *= 0.8; // smaller
-        if (e.key === "]") brushRadius *= 1.25; // bigger
-    });
-
     let randomize = true;
-
     // init clear
     regl.clear({ color: [0, 0, 0, 1], framebuffer: ping });
     regl.clear({ color: [0, 0, 0, 1], framebuffer: pong });
@@ -212,14 +183,26 @@ const sketch = ({ canvas, gl, width, height }) => {
                 randomize = false;
             }
 
+            if (lastTime === 0) {
+                lastTime = time;
+            }
+            const dt = time - lastTime;
+            lastTime = time;
+
+            acc += dt;
+            const stepDt = 1 / simHz;
+
             const doUpdate = !paused || stepOnce;
             if (doUpdate) {
-                updatePass({ prev: ping.color[0], next: pong });
-                // swap
-                const tmp = ping;
-                ping = pong;
-                pong = tmp;
-                stepOnce = false;
+                while (acc >= stepDt) {
+                    updatePass({ prev: ping.color[0], next: pong });
+                    // swap
+                    const tmp = ping;
+                    ping = pong;
+                    pong = tmp;
+                    stepOnce = false;
+                    acc -= stepDt;
+                }
             }
 
             // draw to screen
@@ -235,3 +218,14 @@ const sketch = ({ canvas, gl, width, height }) => {
 };
 
 canvasSketch(sketch, settings);
+
+// FUNCTION
+function parseRule(rule = "B3/S23") {
+    const r = rule.toUpperCase().replace(/\s+/g, "");
+    const [bPart, sPart] = r.split("/");
+    const births = (bPart.match(/\d/g) || []).map(Number);
+    const survives = (sPart.match(/\d/g) || []).map(Number);
+
+    const toMask = (arr) => arr.reduce((m, k) => m | (1 << k), 0);
+    return { birthMask: toMask(births), surviveMask: toMask(survives) };
+}
