@@ -6,7 +6,16 @@ const settings = {
   dimensions: [2048, 2048],
 };
 
-const sketch = () => {
+const params = {
+  margin: 20,
+};
+
+const sketch = ({ width, height }) => {
+  const margin = params.margin;
+  const drawWidth = width - 2 * margin;
+  const drawHeight = height - 2 * margin;
+  const origin = { x: margin, y: margin };
+
   return ({ context, width, height }) => {
     context.fillStyle = "white";
     context.fillRect(0, 0, width, height);
@@ -16,5 +25,15 @@ const sketch = () => {
 canvasSketch(sketch, settings);
 
 // CLASSES
+class Ground {
+  constructor(origin) {
+    this.origin = origin;
+  }
 
-// FUNCTIONS
+  draw(context) {
+    context.beginPath();
+    context.endPath();
+  }
+}
+// FUNCTIONS:w
+//
