@@ -7,10 +7,13 @@ const settings = {
     context: "webgl",
     animate: true,
     dimensions: [2048, 2048],
+    scaleToView: true,
 };
 
 const params = {
-    ruleSet: "B36/S23",
+    ruleSetR: "B3/S23",
+    ruleSetG: "B36/S345",
+    ruleSetB: "B3678/S34678",
     dimFact: 1,
     simHz: 30,
     seed: 0.123,
@@ -29,8 +32,8 @@ const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
     });
 
     const resetAll = () => {
-        seedPass({ fbo: ping, seed: params.seed });
-        seedPass({ fbo: pong, seed: params.seed });
+        ping.color[0].subimage(seedCanvas);
+        pong.color[0].subimage(seedCanvas);
     };
     const regl = createRegl({ gl });
 
@@ -53,6 +56,7 @@ const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
                 // 8-bit is prima voor 0/1 state
                 format: "rgba",
                 type: "uint8",
+                flipY: true,
             }),
             depth: false,
             stencil: false,
@@ -60,6 +64,34 @@ const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
 
     let ping = makeFBO();
     let pong = makeFBO();
+
+    //  OFFSCREEN CANVAS
+    const seedCanvas = document.createElement("canvas");
+    seedCanvas.width = simW;
+    seedCanvas.height = simH;
+    const sctx = seedCanvas.getContext("2d");
+    sctx.setTransform(1, 0, 0, 1, 0, 0);
+    sctx.imageSmoothingEnabled = false;
+    sctx.fillStyle = "black";
+    sctx.fillRect(0, 0, simW, simH);
+    const fontSize = Math.floor(simH * 0.18);
+    sctx.font = `${fontSize}px monospace`;
+    const cx = simW * 0.15;
+    const spacing = simH * 0.28;
+    sctx.fillStyle = "rgb(0,0,255)";
+    sctx.fillText("GENUARY", cx, simH * 0.3);
+    sctx.fillStyle = "rgb(0,0,255)";
+    sctx.fillText("2026", 2 * cx, simH * 0.3 + 2 * spacing);
+    sctx.font = `${fontSize * 0.5}px monospace`;
+    sctx.fillStyle = "rgb(0,255,0)";
+    sctx.fillText("CRAZY AUTOMATA", cx, simH * 0.3 + spacing);
+    let origin = { x: 0, y: 0 };
+    let nr = 10;
+    let nc = 10;
+    let cellWidth = simW / nc;
+    let cellHeight = simH / nr;
+    const grid = new Grid(origin, nr, nc, cellWidth, cellHeight);
+    grid.draw(sctx, "red", 1);
 
     // Fullscreen triangle
     const vert = `
@@ -111,47 +143,70 @@ const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
 
     // --- Life update shader
     const lifeFrag = `
-    precision highp float;
-    varying vec2 vUv;
-    uniform sampler2D uPrev;
-    uniform vec2 uTexel;
-    uniform float uBirthMask;
-    uniform float uSurviveMask;
+   precision highp float;
+varying vec2 vUv;
+uniform sampler2D uPrev;
+uniform vec2 uTexel;
+uniform float uBirthMaskR, uBirthMaskG, uBirthMaskB;
+uniform float uSurviveMaskR, uSurviveMaskG, uSurviveMaskB;
 
-    float cell(vec2 uv) {
-      // state zit in R kanaal, threshold op 0.5
-      return step(0.5, texture2D(uPrev, uv).r);
-    }
-    
-    float hasBit(float mask, float n){
-        float p = pow(2.0, n);
-        return step(0.5, mod(floor(mask/p), 2.0));
-    }
+float hasBit(float mask, float n){
+  float p = pow(2.0, n);
+  return step(0.5, mod(floor(mask/p), 2.0));
+}
 
-    void main () {
-      vec2 uv = vUv;
+void main () {
+  vec2 uv = vUv;
 
-      // tel 8 buren
-      float n = 0.0;
-      n += cell(uv + uTexel * vec2(-1.0, -1.0));
-      n += cell(uv + uTexel * vec2( 0.0, -1.0));
-      n += cell(uv + uTexel * vec2( 1.0, -1.0));
-      n += cell(uv + uTexel * vec2(-1.0,  0.0));
-      n += cell(uv + uTexel * vec2( 1.0,  0.0));
-      n += cell(uv + uTexel * vec2(-1.0,  1.0));
-      n += cell(uv + uTexel * vec2( 0.0,  1.0));
-      n += cell(uv + uTexel * vec2( 1.0,  1.0));
+  vec4 p = texture2D(uPrev, uv);
+  float aR = step(0.5, p.r);
+  float aG = step(0.5, p.g);
+  float aB = step(0.5, p.b);
 
-      float alive = cell(uv);
+  vec2 t = uTexel;
 
-     float born    = (1.0 - alive) * hasBit(uBirthMask, n);
-     float survive = alive * hasBit(uSurviveMask, n);
-     float nextAlive = clamp(born + survive, 0.0, 1.0);
-     gl_FragColor = vec4(nextAlive, 0.0, 0.0, 1.0);
-    }
-  `;
+  vec4 n00 = texture2D(uPrev, uv + t * vec2(-1.0, -1.0));
+  vec4 n10 = texture2D(uPrev, uv + t * vec2( 0.0, -1.0));
+  vec4 n20 = texture2D(uPrev, uv + t * vec2( 1.0, -1.0));
 
-    const ruleState = parseRule(params.ruleSet);
+  vec4 n01 = texture2D(uPrev, uv + t * vec2(-1.0,  0.0));
+  vec4 n21 = texture2D(uPrev, uv + t * vec2( 1.0,  0.0));
+
+  vec4 n02 = texture2D(uPrev, uv + t * vec2(-1.0,  1.0));
+  vec4 n12 = texture2D(uPrev, uv + t * vec2( 0.0,  1.0));
+  vec4 n22 = texture2D(uPrev, uv + t * vec2( 1.0,  1.0));
+
+  float nR = 0.0;
+  nR += step(0.5, n00.r); nR += step(0.5, n10.r); nR += step(0.5, n20.r);
+  nR += step(0.5, n01.r);                         nR += step(0.5, n21.r);
+  nR += step(0.5, n02.r); nR += step(0.5, n12.r); nR += step(0.5, n22.r);
+
+  float nG = 0.0;
+  nG += step(0.5, n00.g); nG += step(0.5, n10.g); nG += step(0.5, n20.g);
+  nG += step(0.5, n01.g);                         nG += step(0.5, n21.g);
+  nG += step(0.5, n02.g); nG += step(0.5, n12.g); nG += step(0.5, n22.g);
+
+  float nB = 0.0;
+  nB += step(0.5, n00.b); nB += step(0.5, n10.b); nB += step(0.5, n20.b);
+  nB += step(0.5, n01.b);                         nB += step(0.5, n21.b);
+  nB += step(0.5, n02.b); nB += step(0.5, n12.b); nB += step(0.5, n22.b);
+
+  float bornR = (1.0 - aR) * hasBit(uBirthMaskR, nR);
+  float bornG = (1.0 - aG) * hasBit(uBirthMaskG, nG);
+  float bornB = (1.0 - aB) * hasBit(uBirthMaskB, nB);
+
+  float surviveR = aR * hasBit(uSurviveMaskR, nR);
+  float surviveG = aG * hasBit(uSurviveMaskG, nG);
+  float surviveB = aB * hasBit(uSurviveMaskB, nB);
+
+  vec3 next = clamp(vec3(bornR + surviveR, bornG + surviveG, bornB + surviveB), 0.0, 1.0);
+  gl_FragColor = vec4(next, 1.0);
+}    `;
+
+    const ruleStateR = parseRule(params.ruleSetR);
+    const ruleStateG = parseRule(params.ruleSetG);
+    const ruleStateB = parseRule(params.ruleSetB);
+
     const updatePass = regl({
         vert,
         frag: lifeFrag,
@@ -159,8 +214,12 @@ const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
         uniforms: {
             uPrev: (_, props) => props.prev,
             uTexel: [1 / simW, 1 / simH],
-            uBirthMask: () => ruleState.birthMask,
-            uSurviveMask: () => ruleState.surviveMask,
+            uBirthMaskR: () => ruleStateR.birthMask,
+            uBirthMaskG: () => ruleStateG.birthMask,
+            uBirthMaskB: () => ruleStateB.birthMask,
+            uSurviveMaskR: () => ruleStateR.surviveMask,
+            uSurviveMaskG: () => ruleStateG.surviveMask,
+            uSurviveMaskB: () => ruleStateB.surviveMask,
         },
         framebuffer: (_, props) => props.next,
     });
@@ -172,8 +231,8 @@ const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
     uniform sampler2D uTex;
 
     void main () {
-      float v = texture2D(uTex, vUv).r;
-      gl_FragColor = vec4(v,0.0,0.0,  1.0);
+      vec3 v = texture2D(uTex, vUv).rgb;
+      gl_FragColor = vec4(v,  1.0);
     }
   `;
 
@@ -188,7 +247,7 @@ const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
     let paused = false;
     let stepOnce = false;
 
-    let randomize = true;
+    let firstFrame = true;
     // init clear
     regl.clear({ color: [0, 0, 0, 1], framebuffer: ping });
     regl.clear({ color: [0, 0, 0, 1], framebuffer: pong });
@@ -207,10 +266,11 @@ const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
             if (!isCapturing && didResetForExport) {
                 didResetForExport = false;
             } // (re)seed
-            if (randomize) {
-                seedPass({ fbo: ping, seed: params.seed });
-                seedPass({ fbo: pong, seed: params.seed });
-                randomize = false;
+            if (firstFrame) {
+                console.log(seedCanvas.width, seedCanvas.height, simW, simH);
+                ping.color[0].subimage(seedCanvas);
+                pong.color[0].subimage(seedCanvas);
+                firstFrame = false;
             }
 
             if (lastTime === 0) {
@@ -258,4 +318,29 @@ function parseRule(rule = "B3/S23") {
 
     const toMask = (arr) => arr.reduce((m, k) => m | (1 << k), 0);
     return { birthMask: toMask(births), surviveMask: toMask(survives) };
+}
+
+class Grid {
+    constructor(origin, nr, nc, cellWidth, cellHeight) {
+        this.origin = origin;
+        this.nr = nr;
+        this.nc = nc;
+        this.cellWidth = cellWidth;
+        this.cellHeight = cellHeight;
+    }
+
+    draw(context, strokeStyle, lw) {
+        for (let i = 0; i < this.nr; i++) {
+            for (let j = 0; j < this.nc; j++) {
+                context.strokeStyle = strokeStyle;
+                context.lineWidth = lw;
+                context.strokeRect(
+                    this.origin.x + i * this.cellWidth,
+                    this.origin.y + j * this.cellHeight,
+                    this.cellWidth,
+                    this.cellHeight,
+                );
+            }
+        }
+    }
 }
