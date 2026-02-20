@@ -11,12 +11,19 @@ const settings = {
 };
 
 const params = {
-    ruleSetR: "B3/S23",
-    ruleSetG: "B36/S345",
-    ruleSetB: "B3678/S34678",
+    ruleSetR: "B3/S4",
+    ruleSetG: "B3/S34678",
+    ruleSetB: "B3/S23",
     dimFact: 1,
     simHz: 30,
     seed: 0.123,
+    margin: 20,
+    rows: 250,
+    cols: 250,
+    dotRadius: 1,
+    threshVal1: 0.5,
+    threshVal2: 0.5,
+    threshVal3: 0.5,
 };
 let didResetForExport = false;
 const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
@@ -32,9 +39,36 @@ const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
     });
 
     const resetAll = () => {
-        ping.color[0].subimage(seedCanvas);
-        pong.color[0].subimage(seedCanvas);
+        acc = 0;
+        lastTime = 0;
+        firstFrame = true;
+        grid.reset();
+
+        // maak paintCanvas black
+        pctx.setTransform(1, 0, 0, 1, 0, 0);
+        pctx.fillStyle = "black";
+        pctx.fillRect(0, 0, simW, simH);
+
+        // teken meteen je seed (grid) één keer
+        grid.cells.forEach((cell) => {
+            cell.evalState();
+            cell.draw(pctx);
+        });
+
+        // upload input texture
+        paintTex.subimage(paintCanvas);
+
+        // seed sim-state met dezelfde canvas
+        ping.color[0].subimage(paintCanvas);
+        pong.color[0].subimage(paintCanvas);
     };
+    const resetPaint = () => {
+        pctx.setTransform(1, 0, 0, 1, 0, 0);
+        pctx.fillStyle = "rgba(0,0,0,1)";
+        pctx.fillRect(0, 0, simW, simH);
+        paintTex.subimage(paintCanvas);
+    };
+
     const regl = createRegl({ gl });
 
     // ---- SIM DIMENSIONS (aantal cellen) ----
@@ -65,34 +99,35 @@ const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
     let ping = makeFBO();
     let pong = makeFBO();
 
-    //  OFFSCREEN CANVAS
-    const seedCanvas = document.createElement("canvas");
-    seedCanvas.width = simW;
-    seedCanvas.height = simH;
-    const sctx = seedCanvas.getContext("2d");
-    sctx.setTransform(1, 0, 0, 1, 0, 0);
-    sctx.imageSmoothingEnabled = false;
-    sctx.fillStyle = "black";
-    sctx.fillRect(0, 0, simW, simH);
-    const fontSize = Math.floor(simH * 0.18);
-    sctx.font = `${fontSize}px monospace`;
-    const cx = simW * 0.15;
-    const spacing = simH * 0.28;
-    sctx.fillStyle = "rgb(0,0,255)";
-    sctx.fillText("GENUARY", cx, simH * 0.3);
-    sctx.fillStyle = "rgb(0,0,255)";
-    sctx.fillText("2026", 2 * cx, simH * 0.3 + 2 * spacing);
-    sctx.font = `${fontSize * 0.5}px monospace`;
-    sctx.fillStyle = "rgb(0,255,0)";
-    sctx.fillText("CRAZY AUTOMATA", cx, simH * 0.3 + spacing);
-    let origin = { x: 0, y: 0 };
-    let nr = 10;
-    let nc = 10;
-    let cellWidth = simW / nc;
-    let cellHeight = simH / nr;
-    const grid = new Grid(origin, nr, nc, cellWidth, cellHeight);
-    grid.draw(sctx, "red", 1);
+    //  PAINT  CANVAS
+    const paintCanvas = document.createElement("canvas");
+    paintCanvas.width = simW;
+    paintCanvas.height = simH;
+    const pctx = paintCanvas.getContext("2d");
+    pctx.setTransform(1, 0, 0, 1, 0, 0);
+    pctx.imageSmoothingEnabled = false;
+    // POSITIONING
+    var drawWidth = simW - 2 * params.margin;
+    var drawHeight = simH - 2 * params.margin;
+    var rows = params.rows;
+    var cols = params.cols;
+    var cellWidth = drawWidth / cols;
+    var cellHeight = cellWidth;
+    drawHeight = rows * cellHeight;
+    var origin = { x: params.margin, y: (simH - drawHeight) / 2 };
+    const grid = new Grid(rows, cols, cellWidth, cellHeight, origin, 1);
 
+    // GPU texture
+    const paintTex = regl.texture({
+        width: simW,
+        height: simH,
+        format: "rgba",
+        type: "uint8",
+        min: "nearest",
+        mag: "nearest",
+        wrap: "clamp",
+        flipY: true,
+    });
     // Fullscreen triangle
     const vert = `
     precision highp float;
@@ -146,6 +181,7 @@ const sketch = ({ canvas, gl, width, height, stop, render, play }) => {
    precision highp float;
 varying vec2 vUv;
 uniform sampler2D uPrev;
+uniform sampler2D uPaint;
 uniform vec2 uTexel;
 uniform float uBirthMaskR, uBirthMaskG, uBirthMaskB;
 uniform float uSurviveMaskR, uSurviveMaskG, uSurviveMaskB;
@@ -162,6 +198,10 @@ void main () {
   float aR = step(0.5, p.r);
   float aG = step(0.5, p.g);
   float aB = step(0.5, p.b);
+  float inkR = step(0.5, texture2D(uPaint, uv).r);
+  float inkG = step(0.5, texture2D(uPaint, uv).g);
+  float inkB = step(0.5, texture2D(uPaint, uv).b);
+
 
   vec2 t = uTexel;
 
@@ -199,8 +239,12 @@ void main () {
   float surviveG = aG * hasBit(uSurviveMaskG, nG);
   float surviveB = aB * hasBit(uSurviveMaskB, nB);
 
-  vec3 next = clamp(vec3(bornR + surviveR, bornG + surviveG, bornB + surviveB), 0.0, 1.0);
-  gl_FragColor = vec4(next, 1.0);
+vec3 next = clamp(vec3(bornR + surviveR, bornG + surviveG, bornB + surviveB), 0.0, 1.0);
+
+// middenweg: ink forceert leven, maar beïnvloedt niet de buurcount
+next = max(next, vec3(inkR, inkG, inkB));
+
+gl_FragColor = vec4(next, 1.0);
 }    `;
 
     const ruleStateR = parseRule(params.ruleSetR);
@@ -213,6 +257,7 @@ void main () {
         ...fullscreen,
         uniforms: {
             uPrev: (_, props) => props.prev,
+            uPaint: () => paintTex,
             uTexel: [1 / simW, 1 / simH],
             uBirthMaskR: () => ruleStateR.birthMask,
             uBirthMaskG: () => ruleStateG.birthMask,
@@ -230,9 +275,27 @@ void main () {
     varying vec2 vUv;
     uniform sampler2D uTex;
 
+    uniform vec3 uColR;
+uniform vec3 uColG;
+uniform vec3 uColB;
+uniform vec3 uColOverlap; // highlight bij overlap
+uniform float uOverlapStrength;
+
     void main () {
-      vec3 v = texture2D(uTex, vUv).rgb;
-      gl_FragColor = vec4(v,  1.0);
+      vec3 s = texture2D(uTex, vUv).rgb; // states
+
+  // basis palette mix
+  vec3 col = s.r * uColR + s.g * uColG + s.b * uColB;
+
+  // overlap detect: als meer dan 1 kanaal "aan" is
+  float overlap = step(1.5, s.r + s.g + s.b); // 2 of 3 kanalen aan
+  col += uOverlapStrength * overlap * uColOverlap;
+
+  // clamp & lichte contrast
+  col = clamp(col, 0.0, 1.0);
+  col = smoothstep(vec3(0.0), vec3(1.0), col);
+
+  gl_FragColor = vec4(col, 1.0);
     }
   `;
 
@@ -240,7 +303,18 @@ void main () {
         vert,
         frag: drawFrag,
         ...fullscreen,
-        uniforms: { uTex: (_, props) => props.tex },
+        uniforms: {
+            uTex: (_, props) => props.tex,
+            uColR: [
+                0.9647058823529412, 0.6823529411764706, 0.17647058823529413,
+            ],
+            uColG: [
+                0.9490196078431372, 0.39215686274509803, 0.09803921568627451,
+            ],
+            uColB: [0.2, 0.396078431372549, 0.396078431372549],
+            uColOverlap: [1.0, 1.0, 1.0],
+            uOverlapStrength: 0.4,
+        },
     });
 
     // --- input / controls
@@ -267,9 +341,12 @@ void main () {
                 didResetForExport = false;
             } // (re)seed
             if (firstFrame) {
-                console.log(seedCanvas.width, seedCanvas.height, simW, simH);
-                ping.color[0].subimage(seedCanvas);
-                pong.color[0].subimage(seedCanvas);
+                ping.color[0].subimage(paintCanvas);
+                pong.color[0].subimage(paintCanvas);
+                pctx.clearRect(0, 0, simW, simH);
+                pctx.fillStyle = "black";
+                pctx.fillRect(0, 0, simW, simH);
+                paintTex.subimage(paintCanvas);
                 firstFrame = false;
             }
 
@@ -282,6 +359,36 @@ void main () {
             acc += dt;
             const stepDt = 1 / simHz;
 
+            // 2D canvas “per frame” tekenen
+            pctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            // voorbeeld: fade trails op input
+
+            // Update/set values of internal functions
+            grid.cells.forEach((cell) => {
+                let val1 = sin(
+                    cell.row * cell.col,
+                    sin(time, 1, 0.01, 0.1 * time),
+                    0.02,
+                    0.8 * time,
+                );
+                let val2 = sin(
+                    (cell.row / cell.col) * frame,
+                    1,
+                    0.01,
+                    0.9 * time,
+                );
+                let val3 = sin(
+                    (cell.col / cell.row) * frame,
+                    1,
+                    0.02,
+                    0.8 * time,
+                );
+                cell.setVals([val1, val2, val3]);
+                cell.evalState();
+                cell.draw(pctx);
+            });
+            paintTex.subimage(paintCanvas);
             const doUpdate = !paused || stepOnce;
             if (doUpdate) {
                 while (acc >= stepDt) {
@@ -320,27 +427,144 @@ function parseRule(rule = "B3/S23") {
     return { birthMask: toMask(births), surviveMask: toMask(survives) };
 }
 
+// Grid class
 class Grid {
-    constructor(origin, nr, nc, cellWidth, cellHeight) {
-        this.origin = origin;
-        this.nr = nr;
-        this.nc = nc;
+    constructor(rows, cols, cellWidth, cellHeight, origin, id) {
+        this.rows = rows;
+        this.cols = cols;
         this.cellWidth = cellWidth;
         this.cellHeight = cellHeight;
+        this.origin = origin;
+        this.id = id;
+        this.cells = [];
+        this.init();
     }
 
-    draw(context, strokeStyle, lw) {
-        for (let i = 0; i < this.nr; i++) {
-            for (let j = 0; j < this.nc; j++) {
-                context.strokeStyle = strokeStyle;
-                context.lineWidth = lw;
-                context.strokeRect(
-                    this.origin.x + i * this.cellWidth,
-                    this.origin.y + j * this.cellHeight,
-                    this.cellWidth,
-                    this.cellHeight,
+    init() {
+        let count = 0;
+        for (let row = 0; row < this.rows; row++) {
+            for (let col = 0; col < this.cols; col++) {
+                this.cells.push(
+                    new Cell(
+                        row,
+                        col,
+                        this.cellWidth,
+                        this.cellHeight,
+                        this.origin,
+                        count,
+                    ),
                 );
+                count++;
             }
         }
     }
+
+    drawCells(context) {
+        this.cells.forEach((cell) => {
+            cell.draw(context);
+        });
+    }
+
+    setVals(vals) {
+        this.cells.forEach((cell) => {
+            cell.setVals(vals);
+        });
+    }
+
+    reset() {
+        this.cells.forEach((cell) => {
+            cell.reset();
+        });
+    }
+}
+
+class Cell {
+    constructor(row, col, cellWidth, cellHeight, origin, id) {
+        this.row = row;
+        this.col = col;
+        this.cellWidth = cellWidth;
+        this.cellHeight = cellHeight;
+        this.origin = origin;
+        this.id = id;
+        this.cellCorner = {
+            x: origin.x + col * cellWidth,
+            y: origin.y + row * cellWidth,
+        };
+        this.cellCenter = {
+            x: origin.x + col * cellWidth + cellWidth / 2,
+            y: origin.y + row * cellWidth + cellHeight / 2,
+        };
+        this.vals = [];
+        this.state = [];
+        this.colors = ["red", "green", "blue"];
+    }
+
+    reset() {
+        this.vals = [];
+        this.state = [];
+    }
+
+    draw(context) {
+        if (this.states[0] && this.states[1]) {
+            context.fillStyle = this.colors[0];
+        } else if (xor(this.states[0], this.states[1])) {
+            context.fillStyle = this.colors[1];
+        } else if (xor(this.states[2], this.states[1])) {
+            context.fillStyle = this.colors[2];
+        } else {
+            context.fillStyle = "black";
+        }
+
+        context.beginPath();
+        context.arc(
+            this.cellCenter.x,
+            this.cellCenter.y,
+            params.dotRadius,
+            0,
+            Math.PI * 2,
+        );
+        context.fill();
+    }
+
+    setVals(vals) {
+        this.vals = vals;
+    }
+
+    evalState() {
+        let state1 = toBool(this.vals[0], params.threshVal1, true);
+        let state2 = toBool(this.vals[1], params.threshVal2, true);
+        let state3 = toBool(this.vals[2], params.threshVal3, true);
+        this.states = [state1, state2, state3];
+    }
+}
+
+// Functions
+
+// SIN
+function sin(t, a, b, phi) {
+    return a * Math.sin(b * t + phi);
+}
+
+function noise(t, a, b, phi) {
+    return random.noise1D(t + phi, b, a);
+}
+
+function noise_2d(t, y, a, b, phi) {
+    return random.noise2D(t + phi, y, b, a);
+}
+
+function toBool(val, thresh, abs) {
+    if (!abs) {
+        return val > thresh ? true : false;
+    } else {
+        if (val > thresh || val < -thresh) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+}
+
+function xor(a, b) {
+    return a !== b;
 }
