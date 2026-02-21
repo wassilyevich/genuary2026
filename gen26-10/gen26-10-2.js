@@ -34,19 +34,53 @@ const settings = {
 const params = {
     margin: 10,
     penWidth: 0.4,
-    vertices: 5,
-    iters: 20,
+    vertices: 4000,
+    iters: 25,
     initWidth: 0.5,
     dtheta: 100,
+    freq: 0.05,
 };
 
-function ufunc(c, center = { x: 0, y: 0 }, origin, maxWidth, maxHeight) {
+function ufunc1(c, center = { x: 0, y: 0 }, origin, maxWidth, maxHeight) {
+    let cart = pol2cart(c.r, c.theta, center);
     return {
-        r: c.r - Math.sin(c.theta ** 2) * c.r * 0.02 - 0.02 * c.r,
-        theta: c.theta - Math.sin(c.theta) * c.theta * 0.08,
+        r:
+            c.r -
+            Math.sin(c.theta ** 2) * c.r * 0.04 -
+            0.06 * c.r -
+            math.mapRange(
+                Random.noise2D(cart.x, cart.y, params.freq, 1),
+                -1,
+                1,
+                0,
+                1,
+            ) *
+                0.015 *
+                c.r,
+        theta: c.theta - (Math.sin(c.theta) * 0.02 * c.r) / maxWidth,
     };
 }
 
+function ufunc2(c, center = { x: 0, y: 0 }, origin, maxWidth, maxHeight) {
+    let cart = pol2cart(c.r, c.theta, center);
+    return {
+        r:
+            c.r -
+            maxWidth / 150 -
+            Math.sin(c.theta ** 2) * c.r * 0.04 -
+            0.06 * c.r -
+            math.mapRange(
+                Random.noise2D(cart.x, cart.y, params.freq, 1),
+                -1,
+                1,
+                0,
+                1,
+            ) *
+                0.015 *
+                c.r,
+        theta: c.theta - Math.sin(c.theta) * 0.08,
+    };
+}
 const sketch = (props) => {
     const { width, height, units } = props;
 
@@ -55,21 +89,35 @@ const sketch = (props) => {
     const drawWidth = width - 2 * margin;
     const drawHeight = height - 2 * margin;
     const origin = { x: margin, y: margin };
-    const shape = new Shape(
+    // SHAPE1
+    const shape1 = new Shape(
         params.vertices,
         origin,
         drawWidth,
         drawHeight,
         params.initWidth,
     );
-    console.log("shape:", shape);
     const paths = [];
-    shape.drawCart(paths);
-    console.log("paths:", paths);
 
     for (let i = 0; i < params.iters; i++) {
-        shape.updatePol(ufunc);
-        shape.drawCart(paths);
+        shape1.drawCart(paths);
+        shape1.updatePol(ufunc1);
+    }
+
+    // SHAPE2
+    const shape2 = new Shape(
+        params.vertices,
+        origin,
+        drawWidth,
+        drawHeight,
+        params.initWidth,
+    );
+
+    for (let i = 0; i < params.iters; i++) {
+        if (i != 0) {
+            shape2.drawCart(paths);
+        }
+        shape2.updatePol(ufunc2);
     }
     // ACTUAL RENDERING/OUTPUTTING
     return ({ context, width, height, units, exporting }) => {
