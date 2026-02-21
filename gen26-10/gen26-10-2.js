@@ -32,7 +32,7 @@ const settings = {
 };
 
 const params = {
-    margin: 10,
+    margin: 15,
     penWidth: 0.4,
     vertices: 4000,
     iters: 25,
@@ -41,44 +41,75 @@ const params = {
     freq: 0.05,
 };
 
-function ufunc1(c, center = { x: 0, y: 0 }, origin, maxWidth, maxHeight) {
-    let cart = pol2cart(c.r, c.theta, center);
+function ufunc1(
+    c,
+    center = { x: 0, y: 0 },
+    origin,
+    maxWidth,
+    maxHeight,
+    initWidth,
+) {
+    let { x, y } = pol2cart(c.r, c.theta, center);
+    x = math.mapRange(x, origin.x, origin.x + maxWidth, 0, Math.PI * 2, true);
+    y = math.mapRange(y, origin.y, origin.y + maxHeight, 0, Math.PI * 2, true);
+
     return {
-        r:
-            c.r -
-            Math.sin(c.theta ** 2) * c.r * 0.04 -
-            0.06 * c.r -
-            math.mapRange(
-                Random.noise2D(cart.x, cart.y, params.freq, 1),
-                -1,
-                1,
-                0,
-                1,
-            ) *
-                0.015 *
-                c.r,
-        theta: c.theta - (Math.sin(c.theta) * 0.02 * c.r) / maxWidth,
+        r: math.mapRange(
+            sin(x) + 0.5 * sin(3 * x),
+            -1,
+            1,
+            c.r * 0.99,
+            c.r * 1.01,
+        ),
+        theta: c.theta * 0.99,
     };
 }
 
-function ufunc2(c, center = { x: 0, y: 0 }, origin, maxWidth, maxHeight) {
-    let cart = pol2cart(c.r, c.theta, center);
+function ufunc2(
+    c,
+    center = { x: 0, y: 0 },
+    origin,
+    maxWidth,
+    maxHeight,
+    initWidth,
+) {
+    let { x, y } = pol2cart(c.r, c.theta, center);
+    x = math.mapRange(x, origin.x, origin.x + maxWidth, 0, Math.PI * 2, true);
+    y = math.mapRange(y, origin.y, origin.y + maxHeight, 0, Math.PI * 2, true);
+
     return {
-        r:
-            c.r -
-            maxWidth / 150 -
-            Math.sin(c.theta ** 2) * c.r * 0.04 -
-            0.06 * c.r -
-            math.mapRange(
-                Random.noise2D(cart.x, cart.y, params.freq, 1),
-                -1,
-                1,
-                0,
-                1,
-            ) *
-                0.015 *
-                c.r,
-        theta: c.theta - Math.sin(c.theta) * 0.08,
+        r: math.mapRange(
+            sin(x) + 0.5 * sin(3 * x),
+            -1,
+            1,
+            c.r * 0.98,
+            c.r * 1.02,
+        ),
+        theta: c.theta,
+    };
+}
+
+function ufunc3(
+    c,
+    center = { x: 0, y: 0 },
+    origin,
+    maxWidth,
+    maxHeight,
+    initWidth,
+) {
+    let { x, y } = pol2cart(c.r, c.theta, center);
+    x = math.mapRange(x, origin.x, origin.x + maxWidth, 0, Math.PI * 2, true);
+    y = math.mapRange(y, origin.y, origin.y + maxHeight, 0, Math.PI * 2, true);
+
+    return {
+        r: math.mapRange(
+            cos(x) + 0.5 * sin(6 * x),
+            -1,
+            1,
+            c.r * 0.97,
+            c.r * 1.03,
+        ),
+        theta: c.theta,
     };
 }
 const sketch = (props) => {
@@ -89,6 +120,9 @@ const sketch = (props) => {
     const drawWidth = width - 2 * margin;
     const drawHeight = height - 2 * margin;
     const origin = { x: margin, y: margin };
+    const paths1 = [];
+    const paths2 = [];
+    const paths3 = [];
     // SHAPE1
     const shape1 = new Shape(
         params.vertices,
@@ -97,10 +131,9 @@ const sketch = (props) => {
         drawHeight,
         params.initWidth,
     );
-    const paths = [];
 
     for (let i = 0; i < params.iters; i++) {
-        shape1.drawCart(paths);
+        shape1.drawCart(paths1);
         shape1.updatePol(ufunc1);
     }
 
@@ -110,20 +143,42 @@ const sketch = (props) => {
         origin,
         drawWidth,
         drawHeight,
-        params.initWidth,
+        params.initWidth / 1.8,
     );
 
     for (let i = 0; i < params.iters; i++) {
         if (i != 0) {
-            shape2.drawCart(paths);
+            shape2.drawCart(paths2);
         }
         shape2.updatePol(ufunc2);
     }
+
+    // SHAPE2
+    const shape3 = new Shape(
+        1000,
+        origin,
+        drawWidth,
+        drawHeight,
+        params.initWidth / 4.1,
+    );
+
+    for (let i = 0; i < params.iters; i++) {
+        if (i != 0) {
+            shape3.drawCart(paths3);
+        }
+        shape3.updatePol(ufunc3);
+    }
     // ACTUAL RENDERING/OUTPUTTING
     return ({ context, width, height, units, exporting }) => {
-        let shapeLines = pathsToPolylines(paths, { units });
+        let lines1 = pathsToPolylines(paths1, { units });
+        let lines2 = pathsToPolylines(paths2, { units });
+        let lines3 = pathsToPolylines(paths3, { units });
 
-        const groups = [{ id: "shapes", lines: shapeLines }];
+        const groups = [
+            { id: "lines1", lines: lines1 },
+            { id: "lines2", lines: lines2 },
+            { id: "lines3", lines: lines3 },
+        ];
         if (context && exporting) {
             const svg = renderGroupedSVG(groups, {
                 width,
@@ -144,7 +199,7 @@ const sketch = (props) => {
 
         // PNG preview: render alles plat (zoals altijd)
         if (!exporting) {
-            return renderPaths([...shapeLines], {
+            return renderPaths([...lines1, ...lines2, ...lines3], {
                 context,
                 width,
                 height,
@@ -209,6 +264,7 @@ class Shape {
                 this.origin,
                 this.drawWidth,
                 this.drawHeight,
+                this.initWidth,
             );
             return pol2cart(uvertPol.r, uvertPol.theta, center);
         });
@@ -228,4 +284,12 @@ function cart2pol(x, y, o = { x: 0, y: 0 }) {
     const theta = Math.atan2(dy, dx);
     const r = Math.hypot(dx, dy);
     return { r, theta };
+}
+
+function sin(x) {
+    return Math.sin(x);
+}
+
+function cos(x) {
+    return Math.cos(x);
 }
