@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="nl">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Code Proximity Flow</title>
+        <style>
+            html,
+            body {
+                margin: 0;
+                height: 100%;
+                background: #0b0d10;
+                overflow: hidden;
+            }
+            canvas {
+                display: block;
+                width: 100%;
+                height: 100%;
+            }
+            .hud {
+                position: fixed;
+                left: 12px;
+                top: 12px;
+                right: 12px;
+                font:
+                    12px ui-monospace,
+                    SFMono-Regular,
+                    Menlo,
+                    Monaco,
+                    Consolas,
+                    "Liberation Mono",
+                    monospace;
+                color: rgba(230, 240, 255, 0.75);
+                pointer-events: none;
+                mix-blend-mode: screen;
+                text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+            }
+        </style>
+        <link
+            href="https://fonts.googleapis.com/css2?family=VT323&display=swap"
+            rel="stylesheet"
+        />
+    </head>
+    <body>
+        <canvas id="c"></canvas>
+
+        <script>
+            (async function () {
+                // ---------- 1) bron ophalen (deze HTML zelf) ----------
+                async function loadSource() {
+                    // Werkt goed via live server (http://...). Bij file:// blokkeert fetch vaak.
+                    const res = await fetch(location.href, {
+                        cache: "no-store",
+                    });
+                    return await res.text();
+                }
+
+                const SOURCE = await loadSource();
+
+                // ---------- 2) canvas setup ----------
+                const canvas = document.getElementById("c");
+                const ctx = canvas.getContext("2d");
+
+                function resize() {
+                    const dpr = Math.max(
+                        1,
+                        Math.min(2, window.devicePixelRatio || 1),
+                    );
+                    canvas.width = Math.floor(innerWidth * dpr);
+                    canvas.height = Math.floor(innerHeight * dpr);
+                    canvas.style.width = innerWidth + "px";
+                    canvas.style.height = innerHeight + "px";
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                }
+                addEventListener("resize", resize);
+                resize();
+
+                let recorder,
+                    chunks = [];
+
+                function startRecording() {
+                    const stream = canvas.captureStream(60);
+                    recorder = new MediaRecorder(stream, {
+                        mimeType: "video/webm;codecs=vp9",
+                    });
+                    chunks = [];
+                    recorder.ondataavailable = (e) => {
+                        if (e.data.size) chunks.push(e.data);
+                    };
+                    recorder.onstop = () => {
+                        const blob = new Blob(chunks, { type: "video/webm" });
+                        const a = document.createElement("a");
+                        a.href = URL.createObjectURL(blob);
+                        a.download = "output.webm";
+                        a.click();
+                        URL.revokeObjectURL(a.href);
+                    };
+                    recorder.start();
+                    console.log("recording started");
+                }
+
+                function stopRecording() {
+                    recorder.stop();
+                    console.log("recording stopped");
+                }
+
+                addEventListener("keydown", (e) => {
+                    if (e.key === "r") startRecording();
+                    if (e.key === "s") stopRecording();
+                });
+
+                // ---------- 3) kleine util: deterministic hash/noise ----------
+                function fract(x) {
+                    return x - Math.floor(x);
+                }
+                function hash01(n) {
+                    return fract(Math.sin(n) * 43758.5453123);
+                }
+                function lerp(a, b, t) {
+                    return a + (b - a) * t;
+                }
+
+                // Smooth-ish flow vector (geen externe noise lib nodig)
+                function flow(x, y, t) {
+                    // twee hoekvelden mengen => coherenter dan pure random
+                    const n1 = hash01(x * 0.005 + y * 0.007 + t * 0.12);
+                    const n2 = hash01(x * 0.009 - y * 0.004 + t * 0.09 + 10.0);
+                    const a = n1 * Math.PI * 2;
+                    const b = n2 * Math.PI * 2;
+                    return {
+                        x: Math.cos(a) + 0.45 * Math.cos(b),
+                        y: Math.sin(a) + 0.45 * Math.sin(b),
+                    };
+                }
+
+                // ---------- 4) tekst -> woorden + letters ----------
+                // We doen: tokenize op whitespace, maar bewaren de letters per woord.
+                function tokenize(text) {
+                    // split met behoud van whitespace tokens
+                    return text.split(/(\s+)/g);
+                }
+                // Kies hier je node-characters:
+                const NODE_CHARS = new Set([";"]);
+
+                const COLORS = {
+                    bg: "#001a66",
+                    glyph: "rgba(180, 220, 255, 0.45)",
+                    node: "rgba(210, 255, 255, 0.95)",
+                    line: "rgba(120, 255, 220, 1.0)", // duidelijk anders dan tekst
+                };
+
+                // Nodes enkel voor deze chars
+                function isNodeChar(ch) {
+                    return NODE_CHARS.has(ch);
+                }
+
+                const TOKENS = tokenize(SOURCE);
+
+                // ---------- 5) agents per woord ----------
+                // Elk niet-whitespace token krijgt een agent met positie/velocity.
+                const agents = [];
+                let wordIndex = 0;
+
+                for (let i = 0; i < TOKENS.length; i++) {
+                    const tok = TOKENS[i];
+                    const isSpace = /^\s+$/.test(tok);
+                    if (isSpace) continue;
+
+                    const seed = i * 1337 + 42;
+                    agents.push({
+                        tokenIndex: i,
+                        wordIndex: wordIndex++,
+                        x: hash01(seed) * innerWidth,
+                        y: hash01(seed + 1) * innerHeight,
+                        vx: lerp(-30, 30, hash01(seed + 2)),
+                        vy: lerp(-20, 20, hash01(seed + 3)),
+                    });
+                }
+
+                // ---------- 6) spatial hash grid voor proximity ----------
+                function buildGrid(points, cellSize) {
+                    const grid = new Map();
+                    for (let i = 0; i < points.length; i++) {
+                        const p = points[i];
+                        const cx = Math.floor(p.x / cellSize);
+                        const cy = Math.floor(p.y / cellSize);
+                        const key = cx + "," + cy;
+                        let arr = grid.get(key);
+                        if (!arr) grid.set(key, (arr = []));
+                        arr.push(i);
+                    }
+                    return grid;
+                }
+                function neighborIdx(grid, p, cellSize) {
+                    const cx = Math.floor(p.x / cellSize);
+                    const cy = Math.floor(p.y / cellSize);
+                    const out = [];
+                    for (let dy = -1; dy <= 1; dy++)
+                        for (let dx = -1; dx <= 1; dx++) {
+                            const key = cx + dx + "," + (cy + dy);
+                            const arr = grid.get(key);
+                            if (arr) out.push(...arr);
+                        }
+                    return out;
+                }
+
+                // ---------- 7) render params ----------
+                const params = {
+                    fontSize: 14,
+                    lineHeight: 1,
+                    radius: 250,
+                    maxNodes: 2200, // performance cap
+                    drift: 0.2,
+                    speed: 6,
+                    maxGlyphs: 100000, // los van maxNodes; bepaalt hoeveel chars je tekent
+                    lineWidthMin: 2,
+                    lineWidthMax: 6,
+                    lineAlphaMax: 0.6,
+                };
+
+                // ---------- 8) animatie loop ----------
+                let lastT = performance.now();
+
+                function step(now) {
+                    const dt = Math.min(0.05, (now - lastT) / 1000);
+                    lastT = now;
+                    const t = now / 1000;
+
+                    const W = innerWidth,
+                        H = innerHeight;
+
+                    // update agents (woorden)
+                    for (const a of agents) {
+                        // flow-veld beïnvloedt velocity zacht
+                        const f = flow(a.x, a.y, t);
+                        a.vx += f.x * 18 * dt * params.speed;
+                        a.vy += f.y * 18 * dt * params.speed;
+
+                        // lichte damping
+                        a.vx *= Math.pow(0.9, dt * 10);
+                        a.vy *= Math.pow(0.9, dt * 10);
+
+                        // move
+                        a.x += a.vx * dt * params.speed;
+                        a.y += a.vy * dt * params.speed;
+
+                        // wraparound met padding
+                        const pad = 80;
+                        if (a.x < -pad) a.x = W + pad;
+                        if (a.x > W + pad) a.x = -pad;
+                        if (a.y < -pad) a.y = H + pad;
+                        if (a.y > H + pad) a.y = -pad;
+                    }
+
+                    // background
+                    ctx.clearRect(0, 0, W, H);
+                    ctx.fillStyle = COLORS.bg;
+                    ctx.fillRect(0, 0, W, H);
+
+                    // tekst styling
+                    ctx.font = `${params.fontSize}px VT323, monospace`;
+                    ctx.textBaseline = "middle";
+                    ctx.textAlign = "center";
+
+                    // proximi// glyphs = alle getekende karakters
+                    // nodes  = subset voor verbindingen
+                    const glyphs = [];
+                    const nodes = [];
+
+                    let agentCursor = 0;
+
+                    for (let i = 0; i < TOKENS.length; i++) {
+                        const tok = TOKENS[i];
+                        const isSpace = /^\s+$/.test(tok);
+                        if (isSpace) continue;
+
+                        const a = agents[agentCursor++];
+                        const letters = Array.from(tok);
+                        const len = letters.length;
+
+                        for (let k = 0; k < len; k++) {
+                            const ch = letters[k];
+
+                            const offX =
+                                (k - (len - 1) / 2) * (params.fontSize * 0.62);
+                            const wob = flow(a.x + offX * 5, a.y, t + k * 0.03);
+
+                            const x = a.x + offX + wob.x * params.drift;
+                            const y = a.y + wob.y * params.drift;
+
+                            // ALLES tekenen
+                            glyphs.push({ x, y, ch });
+
+                            // Alleen sommige chars worden nodes
+                            if (isNodeChar(ch)) nodes.push({ x, y, ch });
+
+                            if (glyphs.length >= params.maxGlyphs) break;
+                        }
+                        if (glyphs.length >= params.maxGlyphs) break;
+                    }
+                    const radius = params.radius;
+                    const r2 = radius * radius;
+                    const cellSize = radius;
+                    const grid = buildGrid(nodes, cellSize);
+
+                    for (let i = 0; i < nodes.length; i++) {
+                        const A = nodes[i];
+                        const cand = neighborIdx(grid, A, cellSize);
+
+                        for (const j of cand) {
+                            if (j <= i) continue;
+                            const B = nodes[j];
+
+                            const dx = B.x - A.x,
+                                dy = B.y - A.y;
+                            const d2 = dx * dx + dy * dy;
+
+                            if (d2 <= r2) {
+                                const d = Math.sqrt(d2);
+                                const closeness = 1 - d / radius; // 1 = heel dicht, 0 = op radius
+
+                                const alpha = closeness * params.lineAlphaMax;
+                                const lw = lerp(
+                                    params.lineWidthMin,
+                                    params.lineWidthMax,
+                                    closeness,
+                                );
+                                ctx.strokeStyle = `rgba(120, 200, 255, ${alpha})`;
+                                ctx.lineWidth = lw;
+
+                                ctx.beginPath();
+                                ctx.moveTo(A.x, A.y);
+                                ctx.lineTo(B.x, B.y);
+                                ctx.stroke();
+                                // glow terug uit (zodat glyphs niet mee-glowen)
+                            }
+                        }
+                    }
+                    // 1) alle characters (glyphs)
+                    ctx.font = `${params.fontSize}px VT323, monospace`;
+                    ctx.textBaseline = "middle";
+                    ctx.textAlign = "center";
+
+                    for (const g of glyphs) {
+                        // alle glyphs
+                        ctx.fillStyle = COLORS.glyph;
+                        ctx.fillText(g.ch, g.x, g.y);
+                    }
+
+                    // 2) nodes erbovenop wat feller (optioneel)
+                    for (const p of nodes) {
+                        ctx.fillStyle = "rgba(210, 255, 255, 0.95)";
+                        ctx.fillText(p.ch, p.x, p.y);
+                    }
+                    // HUD
+
+                    ctx.fillStyle = "rgba(0,0,0,0.12)";
+                    for (let y = 0; y < H; y += 4) {
+                        ctx.fillRect(0, y, W, 1);
+                    }
+
+                    requestAnimationFrame(step);
+                }
+
+                requestAnimationFrame(step);
+            })();
+        </script>
+    </body>
+</html>
