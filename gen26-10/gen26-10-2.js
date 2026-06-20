@@ -24,7 +24,7 @@ console.log("Random Seed:", Random.getSeed());
 
 const settings = {
     suffix: Random.getSeed(),
-    dimensions: "A3",
+    dimensions: [155, 105],
     orientation: "portrait",
     pixelsPerInch: 300,
     scaleToView: true,
@@ -33,7 +33,7 @@ const settings = {
 
 const params = {
     margin: 15,
-    penWidth: 0.4,
+    penWidth: 0.25,
     vertices: 4000,
     iters: 25,
     initWidth: 0.5,
@@ -55,7 +55,7 @@ function ufunc1(
 
     return {
         r: math.mapRange(
-            sin(x) + 0.5 * sin(3 * x),
+            sin(x) + 0.5 * sin(11 * x) + 0.1 * sin(22 * x + Math.PI / 2),
             -1,
             1,
             c.r * 0.99,
@@ -79,7 +79,7 @@ function ufunc2(
 
     return {
         r: math.mapRange(
-            sin(x) + 0.5 * sin(3 * x),
+            cos(x) + 0.5 * sin(3 * x),
             -1,
             1,
             c.r * 0.98,
@@ -129,7 +129,7 @@ const sketch = (props) => {
         origin,
         drawWidth,
         drawHeight,
-        params.initWidth,
+        params.initWidth * 1.15,
     );
 
     for (let i = 0; i < params.iters; i++) {
@@ -143,7 +143,7 @@ const sketch = (props) => {
         origin,
         drawWidth,
         drawHeight,
-        params.initWidth / 1.8,
+        params.initWidth / 1.6,
     );
 
     for (let i = 0; i < params.iters; i++) {

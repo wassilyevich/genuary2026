@@ -2,6 +2,7 @@ const canvasSketch = require("canvas-sketch");
 const math = require("canvas-sketch-util/math");
 const random = require("canvas-sketch-util/random");
 const vector = require("./vector");
+const matrix = require("./matrix");
 const settings = {
     dimensions: [2048, 2048],
 };
@@ -29,16 +30,6 @@ const sketch = ({ width, height }) => {
     const plane4 = new Rectangle([p4, p3, p7, p8]);
     const plane5 = new Rectangle([p1, p5, p8, p4]);
     const plane6 = new Rectangle([p2, p6, p7, p3]);
-
-    const cameraPosition = { x: 0, y: 0, z: -10 };
-    const cameraDirection = { x: 0, y: 0, z: 1 };
-    const camera = new Camera(cameraPosition, cameraDirection);
-
-    const vP1 = { x: 10, y: 10, z: -4 };
-    const vP2 = { x: 10, y: -10, z: -4 };
-    const vP3 = { x: -10, y: -10, z: -4 };
-    const vP4 = { x: -10, y: 10, z: -4 };
-    const viewPlane = new Rectangle([vP1, vP2, vP3, vP4]);
 
     // Debugging
 
@@ -121,12 +112,4 @@ class Rectangle {
             return;
         }
     }
-}
-
-class Camera {
-    constructor(position, direction) {
-        this.position = position;
-        this.direction = direction;
-    }
-    project(p, viewPlane) {}
 }
